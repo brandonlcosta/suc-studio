@@ -42,6 +42,7 @@
             <button id="add-section">Add section</button>
           </div>
         </div>
+        <div class="timeline-preview" id="timeline-preview">Preview will appear here.</div>
         <div id="timeline-empty" class="empty-state">Select a workout to edit.</div>
         <ol id="timeline-list" class="timeline-list"></ol>
       </section>
@@ -56,9 +57,22 @@
           <h3>Validation</h3>
           <ul id="validation-errors" class="validation-list"></ul>
         </div>
+        <div class="export-panel">
+          <div class="export-header">
+            <h3>Export</h3>
+          </div>
+          <div class="export-preview">
+            <span class="export-label">Workout preview</span>
+            <p id="export-preview" class="preview-text"></p>
+          </div>
+          <div class="export-payload">
+            <span class="export-label">Export payload</span>
+            <pre id="export-payload" class="export-code"></pre>
+          </div>
+        </div>
       </section>
     </main>
 
-    <script src="/app.js"></script>
+    <script type="module" src="/app.js"></script>
   </body>
 </html>

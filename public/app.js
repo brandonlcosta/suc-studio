@@ -1,9 +1,14 @@
+import { formatWorkoutPreview } from "./workoutPreview.js";
+
 const workoutListEl = document.getElementById("workout-list");
 const timelineListEl = document.getElementById("timeline-list");
 const timelineEmptyEl = document.getElementById("timeline-empty");
 const inspectorFormEl = document.getElementById("inspector-form");
 const inspectorEmptyEl = document.getElementById("inspector-empty");
 const validationErrorsEl = document.getElementById("validation-errors");
+const timelinePreviewEl = document.getElementById("timeline-preview");
+const exportPreviewEl = document.getElementById("export-preview");
+const exportPayloadEl = document.getElementById("export-payload");
 const saveButton = document.getElementById("save-workouts");
 const saveStatusEl = document.getElementById("save-status");
 const sectionTypeSelect = document.getElementById("section-type");
@@ -203,6 +208,7 @@ function renderValidation() {
 function renderWorkoutList() {
   workoutListEl.innerHTML = "";
   workouts.forEach((workout) => {
+    const preview = formatWorkoutPreview(workout).text;
     const item = document.createElement("li");
     item.className = "workout-item";
     if (workout.workoutId === selectedWorkoutId) {
@@ -217,6 +223,10 @@ function renderWorkoutList() {
     const subtitle = document.createElement("span");
     subtitle.className = "timeline-meta";
     subtitle.textContent = workout.workoutId;
+    const previewLine = document.createElement("span");
+    previewLine.className = "workout-preview";
+    previewLine.textContent = preview || "No preview available";
+    previewLine.title = preview;
     const actions = document.createElement("div");
     actions.className = "workout-actions";
     const selectButton = document.createElement("button");
@@ -229,9 +239,26 @@ function renderWorkoutList() {
     deleteButton.textContent = "Delete";
     deleteButton.addEventListener("click", () => deleteWorkout(workout.workoutId));
     actions.append(selectButton, duplicateButton, deleteButton);
-    item.append(titleInput, subtitle, actions);
+    item.append(titleInput, subtitle, previewLine, actions);
     workoutListEl.appendChild(item);
   });
+}
+
+function renderPreview() {
+  const workout = getSelectedWorkout();
+  if (!timelinePreviewEl || !exportPreviewEl || !exportPayloadEl) {
+    return;
+  }
+  if (!workout) {
+    timelinePreviewEl.textContent = "Select a workout to preview.";
+    exportPreviewEl.textContent = "";
+    exportPayloadEl.textContent = "";
+    return;
+  }
+  const preview = formatWorkoutPreview(workout).text;
+  timelinePreviewEl.textContent = preview || "Preview will appear here.";
+  exportPreviewEl.textContent = preview || "Preview will appear here.";
+  exportPayloadEl.textContent = JSON.stringify(workout, null, 2);
 }
 
 function renderTimeline() {
@@ -721,6 +748,7 @@ function render() {
   renderInspector();
   renderValidation();
   renderSaveState();
+  renderPreview();
 }
 
 addSectionButton.addEventListener("click", addSection);

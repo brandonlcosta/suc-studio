@@ -5,7 +5,8 @@
   "type": "commonjs",
   "scripts": {
     "dev": "tsx src/server.ts",
-    "probe": "tsx src/index.ts"
+    "probe": "tsx src/index.ts",
+    "test": "tsx src/workoutPreview.test.ts"
   },
   "devDependencies": {
     "tsx": "^4.19.2",
