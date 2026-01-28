@@ -1,0 +1,305 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SUC-Workout Canonical Schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["workoutId", "name", "structure"],
+  "properties": {
+    "workoutId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cues": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "structure": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/section"
+      }
+    }
+  },
+  "$defs": {
+    "duration": {
+      "type": "string",
+      "description": "Duration expressed as time or distance, e.g. 10min or 2mi.",
+      "oneOf": [
+        {
+          "pattern": "^\\d+(\\.\\d+)?(s|sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours)$"
+        },
+        {
+          "pattern": "^\\d+(\\.\\d+)?(m|meter|meters|km|kilometer|kilometers|mi|mile|miles|yd|yard|yards)$"
+        }
+      ]
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "title": "Heart rate target",
+          "required": ["type", "percentMax"],
+          "properties": {
+            "type": {
+              "const": "hr"
+            },
+            "percentMax": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "zone": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "title": "Pace target",
+          "required": ["type", "zone"],
+          "properties": {
+            "type": {
+              "const": "pace"
+            },
+            "zone": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "title": "Percent-based target",
+          "required": ["type", "range"],
+          "properties": {
+            "type": {
+              "const": "percent"
+            },
+            "range": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "intervalBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["duration", "target"],
+      "properties": {
+        "duration": {
+          "$ref": "#/$defs/duration"
+        },
+        "target": {
+          "$ref": "#/$defs/target"
+        },
+        "cues": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "sectionBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["warmup", "steady", "interval", "progression", "cooldown", "free"]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cues": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "steadySection": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/sectionBase"
+        },
+        {
+          "type": "object",
+          "required": ["type", "duration", "target"],
+          "properties": {
+            "type": {
+              "const": "steady"
+            },
+            "duration": {
+              "$ref": "#/$defs/duration"
+            },
+            "target": {
+              "$ref": "#/$defs/target"
+            }
+          }
+        }
+      ]
+    },
+    "warmupSection": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/sectionBase"
+        },
+        {
+          "type": "object",
+          "required": ["type", "duration", "target"],
+          "properties": {
+            "type": {
+              "const": "warmup"
+            },
+            "duration": {
+              "$ref": "#/$defs/duration"
+            },
+            "target": {
+              "$ref": "#/$defs/target"
+            }
+          }
+        }
+      ]
+    },
+    "cooldownSection": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/sectionBase"
+        },
+        {
+          "type": "object",
+          "required": ["type", "duration", "target"],
+          "properties": {
+            "type": {
+              "const": "cooldown"
+            },
+            "duration": {
+              "$ref": "#/$defs/duration"
+            },
+            "target": {
+              "$ref": "#/$defs/target"
+            }
+          }
+        }
+      ]
+    },
+    "progressionSection": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/sectionBase"
+        },
+        {
+          "type": "object",
+          "required": ["type", "duration", "target"],
+          "properties": {
+            "type": {
+              "const": "progression"
+            },
+            "duration": {
+              "$ref": "#/$defs/duration"
+            },
+            "target": {
+              "$ref": "#/$defs/target"
+            }
+          }
+        }
+      ]
+    },
+    "freeSection": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/sectionBase"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "free"
+            },
+            "duration": {
+              "$ref": "#/$defs/duration"
+            },
+            "target": {
+              "$ref": "#/$defs/target"
+            }
+          }
+        }
+      ]
+    },
+    "intervalSection": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/sectionBase"
+        },
+        {
+          "type": "object",
+          "required": ["type", "reps", "work", "rest"],
+          "properties": {
+            "type": {
+              "const": "interval"
+            },
+            "reps": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "work": {
+              "$ref": "#/$defs/intervalBlock"
+            },
+            "rest": {
+              "$ref": "#/$defs/intervalBlock"
+            }
+          }
+        }
+      ]
+    },
+    "section": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/warmupSection"
+        },
+        {
+          "$ref": "#/$defs/steadySection"
+        },
+        {
+          "$ref": "#/$defs/intervalSection"
+        },
+        {
+          "$ref": "#/$defs/progressionSection"
+        },
+        {
+          "$ref": "#/$defs/cooldownSection"
+        },
+        {
+          "$ref": "#/$defs/freeSection"
+        }
+      ]
+    }
+  }
+}
