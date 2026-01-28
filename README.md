@@ -1,8 +1,7 @@
 # suc-studio (read-only probe)
 
-This repo is a read-only authoring layer used to verify connectivity to
-`suc-shared-data`. It loads canonical JSON and route folders and prints a
-summary. No writes occur.
+This repo is the authoring layer for SUC-Workout. It includes a timeline editor
+UI that reads/writes workouts via the canonical write adapter.
 
 ## Requirements
 - Node.js
@@ -13,6 +12,11 @@ npm install
 npm run dev
 ```
 
+Visit `http://localhost:3000` to open the timeline editor.
+
 ## Notes
 - Shared data root is resolved via `src/paths.ts`.
-- This repo should be safe to delete without affecting shared data.
+- All workout saves target `suc-shared-data/workouts/workouts.master.json`.
+
+## SUC-Workout
+See the SUC-Workout timeline builder overview in `docs/SUC-WORKOUT.md`.
