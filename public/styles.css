@@ -89,6 +89,7 @@ button:disabled {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
 }
 
 .panel-header h2 {
@@ -96,10 +97,50 @@ button:disabled {
   font-size: 15px;
 }
 
+.panel-subtitle {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.library-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.small-label {
+  font-size: 11px;
+  color: #6b7280;
+}
+
 .timeline-actions {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.timeline-command-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+  font-size: 12px;
+}
+
+.command-group,
+.shortcut-hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.command-label {
+  font-weight: 600;
+  color: #374151;
 }
 
 .workout-list {
@@ -187,6 +228,8 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-height: calc(56px + (var(--intensity, 2) * 6px));
+  transition: min-height 0.2s ease, background 0.2s ease, border-color 0.2s ease;
 }
 
 .timeline-item.selected {
@@ -212,6 +255,23 @@ button:disabled {
 .timeline-actions-inline {
   display: flex;
   gap: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.timeline-item:hover .timeline-actions-inline,
+.timeline-item.selected .timeline-actions-inline {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.convert-select {
+  border: 1px dashed #d1d5db;
+  background: #fff;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 12px;
 }
 
 .interval-details {
@@ -314,4 +374,48 @@ button:disabled {
 .target-badge {
   font-weight: 600;
   color: #111827;
+}
+
+.tp-export {
+  border-top: 1px solid #e5e7eb;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tp-export-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tp-export-header h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.tp-export label {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.tp-export textarea {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 12px;
+  font-family: "SFMono-Regular", "Menlo", monospace;
+  resize: vertical;
+}
+
+.tp-export-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.tp-export-status {
+  font-size: 12px;
+  color: #6b7280;
 }
