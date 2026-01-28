@@ -1,0 +1,149 @@
+{
+  "version": 8,
+  "name": "SUC Minimal Dark Topo 3D (Balanced)",
+  "glyphs": "https://api.maptiler.com/fonts/{fontstack}/{range}.pbf?key=kS0F61dHDVlgzltLkAr4",
+
+  "sources": {
+    "terrain-dem": {
+      "type": "raster-dem",
+      "url": "https://api.maptiler.com/tiles/terrain-rgb-v2/tiles.json?key=kS0F61dHDVlgzltLkAr4"
+    },
+    "hillshade": {
+      "type": "raster-dem",
+      "url": "https://api.maptiler.com/tiles/hillshade/tiles.json?key=kS0F61dHDVlgzltLkAr4"
+    },
+    "topo-raster": {
+      "type": "raster",
+      "tiles": [
+        "https://api.maptiler.com/maps/outdoor-v2/256/{z}/{x}/{y}.png?key=kS0F61dHDVlgzltLkAr4"
+      ],
+      "tileSize": 256,
+      "maxzoom": 17
+    },
+    "contours": {
+      "type": "vector",
+      "url": "https://api.maptiler.com/tiles/contours/tiles.json?key=kS0F61dHDVlgzltLkAr4"
+    },
+    "roads": {
+      "type": "vector",
+      "url": "https://api.maptiler.com/tiles/v3/tiles.json?key=kS0F61dHDVlgzltLkAr4"
+    }
+  },
+
+  "terrain": {
+    "source": "terrain-dem",
+    "exaggeration": 1.2
+  },
+
+  "light": {
+    "anchor": "viewport",
+    "position": [1.4, 120, 55],
+    "intensity": 0.30
+  },
+
+  "fog": {
+    "range": [0.75, 2.2],
+    "color": "#070b18",
+    "horizon-blend": 0.18,
+    "high-color": "#0d172c",
+    "space-color": "#000008",
+    "star-intensity": 0.0
+  },
+
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": {
+        "background-color": "#050814"
+      }
+    },
+
+    {
+      "id": "hillshade-soft",
+      "type": "hillshade",
+      "source": "hillshade",
+      "paint": {
+        "hillshade-exaggeration": 0.015,
+        "hillshade-shadow-color": "#000000",
+        "hillshade-highlight-color": "#ffffff",
+        "hillshade-accent-color": "#747d92",
+        "hillshade-illumination-direction": 125
+      }
+    },
+
+    {
+      "id": "topo-raster-minimal",
+      "type": "raster",
+      "source": "topo-raster",
+      "paint": {
+        "raster-opacity": 0.28,
+        "raster-saturation": -1.0,
+        "raster-brightness-min": 0.58,
+        "raster-brightness-max": 0.82,
+        "raster-contrast": 0.35
+      }
+    },
+
+    {
+      "id": "roads-major",
+      "type": "line",
+      "source": "roads",
+      "source-layer": "transportation",
+      "filter": [
+        "in",
+        ["get", "class"],
+        ["literal", ["motorway", "trunk", "primary", "secondary"]]
+      ],
+      "paint": {
+        "line-color": "rgba(255,255,255,0.45)",
+        "line-width": [
+          "interpolate", ["linear"], ["zoom"],
+          8, 0.6,
+          12, 1.4,
+          15, 2.2
+        ],
+        "line-opacity": 0.6
+      }
+    },
+
+    {
+      "id": "roads-minor",
+      "type": "line",
+      "source": "roads",
+      "source-layer": "transportation",
+      "filter": [
+        "in",
+        ["get", "class"],
+        ["literal", ["tertiary", "residential", "service", "unclassified"]]
+      ],
+      "paint": {
+        "line-color": "rgba(255,255,255,0.25)",
+        "line-width": [
+          "interpolate", ["linear"], ["zoom"],
+          10, 0.3,
+          13, 0.7,
+          16, 1.1
+        ],
+        "line-opacity": 0.4
+      }
+    },
+
+    {
+      "id": "contours-bold",
+      "type": "line",
+      "source": "contours",
+      "source-layer": "contour",
+      "paint": {
+        "line-color": "#a2c5dd",
+        "line-width": [
+          "interpolate", ["linear"], ["zoom"],
+          10, 0.45,
+          13, 0.85,
+          15, 1.25
+        ],
+        "line-opacity": 0.50
+      }
+    }
+  ]
+}
