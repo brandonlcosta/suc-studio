@@ -4,7 +4,8 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "dev": "tsx src/index.ts"
+    "dev": "tsx src/index.ts",
+    "studio": "tsx src/index.ts"
   },
   "devDependencies": {
     "tsx": "^4.19.2",

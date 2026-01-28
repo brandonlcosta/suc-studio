@@ -5,6 +5,7 @@ import {
   loadWorkoutsMaster,
 } from "./sharedData";
 import { SHARED_DATA_ROOT } from "./paths";
+import { selectEventInSelection } from "./writeSelection";
 
 function assertArray(value: unknown, label: string): unknown[] {
   if (!Array.isArray(value)) {
@@ -13,7 +14,13 @@ function assertArray(value: unknown, label: string): unknown[] {
   return value;
 }
 
-function main(): void {
+function printHelp(): void {
+  console.log("Usage:");
+  console.log("  npm run studio");
+  console.log("  npm run studio select-event <EVENT_ID>");
+}
+
+function runSummary(): void {
   console.log("[Studio] Shared data root resolved");
   console.log(`[Studio] Root: ${SHARED_DATA_ROOT}`);
 
@@ -34,6 +41,41 @@ function main(): void {
   const workoutsMaster = loadWorkoutsMaster() as { workouts?: unknown };
   const workouts = assertArray(workoutsMaster.workouts, "workouts in workouts.master.json");
   console.log(`[Studio] Workouts: ${workouts.length}`);
+}
+
+function runSelectEvent(args: string[]): void {
+  if (args.length !== 1) {
+    printHelp();
+    process.exitCode = 1;
+    return;
+  }
+
+  const eventId = args[0];
+  const result = selectEventInSelection(eventId);
+  if (result === "already") {
+    console.log(`[Studio] Event ${eventId} already selected — no changes made`);
+    return;
+  }
+
+  console.log(`[Studio] Selected event: ${eventId}`);
+  console.log("[Studio] events.selection.json updated");
+}
+
+function main(): void {
+  const args = process.argv.slice(2);
+  if (args.length === 0) {
+    runSummary();
+    return;
+  }
+
+  const [command, ...rest] = args;
+  if (command === "select-event") {
+    runSelectEvent(rest);
+    return;
+  }
+
+  printHelp();
+  process.exitCode = 1;
 }
 
 main();
