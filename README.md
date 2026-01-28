@@ -16,3 +16,6 @@ npm run dev
 ## Notes
 - Shared data root is resolved via `src/paths.ts`.
 - This repo should be safe to delete without affecting shared data.
+
+## SUC-Workout
+See the SUC-Workout timeline builder overview in `docs/SUC-WORKOUT.md`.
