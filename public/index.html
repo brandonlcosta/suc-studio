@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SUC-Workout Timeline Editor</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <h1>SUC-Workout Timeline Editor</h1>
+        <p class="subtitle">Schema-driven workout composition</p>
+      </div>
+      <div class="header-actions">
+        <button id="save-workouts" class="primary">Save workouts</button>
+        <span id="save-status" class="status"></span>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel library">
+        <div class="panel-header">
+          <h2>Workout Library</h2>
+          <button id="new-workout">New workout</button>
+        </div>
+        <ul id="workout-list" class="workout-list"></ul>
+      </section>
+
+      <section class="panel timeline">
+        <div class="panel-header">
+          <h2>Timeline Editor</h2>
+          <div class="timeline-actions">
+            <select id="section-type">
+              <option value="warmup">Warmup</option>
+              <option value="steady">Steady</option>
+              <option value="interval">Interval</option>
+              <option value="progression">Progression</option>
+              <option value="cooldown">Cooldown</option>
+              <option value="free">Free</option>
+            </select>
+            <button id="add-section">Add section</button>
+          </div>
+        </div>
+        <div id="timeline-empty" class="empty-state">Select a workout to edit.</div>
+        <ol id="timeline-list" class="timeline-list"></ol>
+      </section>
+
+      <section class="panel inspector">
+        <div class="panel-header">
+          <h2>Section Inspector</h2>
+        </div>
+        <div id="inspector-empty" class="empty-state">Select a section to edit.</div>
+        <form id="inspector-form" class="inspector-form"></form>
+        <div class="validation">
+          <h3>Validation</h3>
+          <ul id="validation-errors" class="validation-list"></ul>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
