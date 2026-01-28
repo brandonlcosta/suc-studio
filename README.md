@@ -1,8 +1,12 @@
 # SUC Studio
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 This repo is the authoring layer for SUC-Workout. It includes a timeline editor
 UI that reads/writes workouts via the canonical write adapter.
+=======
+Web-based control plane for editing canonical data in [suc-shared-data](../suc-shared-data).
+>>>>>>> Stashed changes
 =======
 Web-based control plane for editing canonical data in [suc-shared-data](../suc-shared-data).
 >>>>>>> Stashed changes
@@ -61,6 +65,7 @@ npm run dev
 ```
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 Visit `http://localhost:3000` to open the timeline editor.
 
 ## Notes
@@ -70,6 +75,8 @@ Visit `http://localhost:3000` to open the timeline editor.
 ## SUC-Workout
 See the SUC-Workout timeline builder overview in `docs/SUC-WORKOUT.md`.
 =======
+=======
+>>>>>>> Stashed changes
 This runs:
 - Backend API server on `http://localhost:3001`
 - Frontend UI on `http://localhost:3000`
@@ -203,4 +210,7 @@ grep -r "writeFile" src/server/
 ## License
 
 Private - SUC Internal Tool
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
