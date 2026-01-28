@@ -21,15 +21,29 @@
     <main class="layout">
       <section class="panel library">
         <div class="panel-header">
-          <h2>Workout Library</h2>
-          <button id="new-workout">New workout</button>
+          <div>
+            <h2>Workout Library</h2>
+            <p class="panel-subtitle">Playbook view for fast reuse.</p>
+          </div>
+          <div class="library-actions">
+            <label class="small-label" for="workout-sort">Sort</label>
+            <select id="workout-sort">
+              <option value="modified">Last modified</option>
+              <option value="duration">Duration</option>
+              <option value="intensity">Intensity</option>
+            </select>
+            <button id="new-workout">New workout</button>
+          </div>
         </div>
         <ul id="workout-list" class="workout-list"></ul>
       </section>
 
       <section class="panel timeline">
         <div class="panel-header">
-          <h2>Timeline Editor</h2>
+          <div>
+            <h2>Timeline Editor</h2>
+            <p class="panel-subtitle">Keyboard-first with inline transforms.</p>
+          </div>
           <div class="timeline-actions">
             <select id="section-type">
               <option value="warmup">Warmup</option>
@@ -40,6 +54,27 @@
               <option value="free">Free</option>
             </select>
             <button id="add-section">Add section</button>
+          </div>
+        </div>
+        <div class="timeline-command-bar">
+          <div class="command-group">
+            <span class="command-label">Commands</span>
+            <button id="command-reps-up">+ Reps</button>
+            <button id="command-reps-down">- Reps</button>
+            <button id="command-extend-5">+5 min</button>
+            <button id="command-extend-10">+10 min</button>
+            <button id="command-extend-warmcool">Extend W/U + C/D</button>
+            <button id="command-add-strides">Add strides</button>
+          </div>
+          <div class="shortcut-hints">
+            <span class="command-label">Shortcuts</span>
+            <span>⌘/Ctrl+S Save</span>
+            <span>⌘/Ctrl+Z Undo</span>
+            <span>⌘/Ctrl+⇧+Z Redo</span>
+            <span>↑/↓ Move</span>
+            <span>⌘/Ctrl+D Duplicate</span>
+            <span>Del Delete</span>
+            <span>Esc Deselect</span>
           </div>
         </div>
         <div id="timeline-empty" class="empty-state">Select a workout to edit.</div>
