@@ -2,12 +2,25 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { WORKOUTS_MASTER_PATH } from "./paths";
+import {
+  AthleteZoneProfile,
+  ResolutionOptions,
+  WorkoutDefinition,
+  resolveWorkoutPreview,
+} from "./targetResolution";
+import { exportTrainingPeaksWorkout } from "./trainingPeaksExport";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const PUBLIC_ROOT = path.join(__dirname, "..", "public");
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 type Workout = Record<string, JsonValue>;
+type ExportRequest = {
+  workoutId?: string;
+  workout?: WorkoutDefinition;
+  athlete?: AthleteZoneProfile;
+  options?: ResolutionOptions & { sport?: "run" };
+};
 
 const durationPattern =
   /^\d+(\.\d+)?(s|sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours|m|meter|meters|km|kilometer|kilometers|mi|mile|miles|yd|yard|yards)$/;
@@ -253,6 +266,35 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, { success: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to save workouts.";
+      sendJson(res, 400, { error: message });
+    }
+    return;
+  }
+
+  if (url.startsWith("/api/workouts/export/trainingpeaks") && req.method === "POST") {
+    try {
+      const body = (await parseJsonBody(req)) as ExportRequest;
+      if ((!body.workoutId && !body.workout) || !body.athlete) {
+        sendJson(res, 400, {
+          error: "workout/workoutId and athlete profile are required for export.",
+        });
+        return;
+      }
+      let workout = body.workout;
+      if (!workout) {
+        const workouts = readWorkoutsMaster() as WorkoutDefinition[];
+        workout = workouts.find((item) => item.workoutId === body.workoutId);
+      }
+      if (!workout) {
+        sendJson(res, 404, { error: `Workout ${body.workoutId ?? "unknown"} not found.` });
+        return;
+      }
+      const resolved = resolveWorkoutPreview(workout, body.athlete, body.options);
+      const exported = exportTrainingPeaksWorkout(resolved, { sport: body.options?.sport });
+      sendJson(res, 200, { workout: exported });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to export TrainingPeaks workout.";
       sendJson(res, 400, { error: message });
     }
     return;

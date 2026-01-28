@@ -56,6 +56,20 @@
           <h3>Validation</h3>
           <ul id="validation-errors" class="validation-list"></ul>
         </div>
+        <div class="tp-export">
+          <div class="tp-export-header">
+            <h3>TrainingPeaks Export</h3>
+            <span class="tp-export-status" id="tp-export-status"></span>
+          </div>
+          <label for="tp-athlete-profile">Athlete profile (JSON)</label>
+          <textarea id="tp-athlete-profile" rows="6"></textarea>
+          <div class="tp-export-actions">
+            <button id="tp-export-preview">Preview export</button>
+            <button id="tp-export-download" class="primary" disabled>Download JSON</button>
+          </div>
+          <label for="tp-export-preview-output">Export preview</label>
+          <textarea id="tp-export-preview-output" rows="10" readonly></textarea>
+        </div>
       </section>
     </main>
 
