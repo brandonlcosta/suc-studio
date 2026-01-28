@@ -9,6 +9,11 @@ const saveStatusEl = document.getElementById("save-status");
 const sectionTypeSelect = document.getElementById("section-type");
 const addSectionButton = document.getElementById("add-section");
 const newWorkoutButton = document.getElementById("new-workout");
+const tpExportStatusEl = document.getElementById("tp-export-status");
+const tpAthleteProfileEl = document.getElementById("tp-athlete-profile");
+const tpExportPreviewButton = document.getElementById("tp-export-preview");
+const tpExportDownloadButton = document.getElementById("tp-export-download");
+const tpExportPreviewOutputEl = document.getElementById("tp-export-preview-output");
 
 let workouts = [];
 let selectedWorkoutId = null;
@@ -16,8 +21,33 @@ let selectedSectionIndex = null;
 let expandedSections = new Set();
 let validationErrorsByWorkoutId = {};
 let validationTimer = null;
+let tpExportPayload = null;
 const durationPattern =
   /^\d+(\.\d+)?(s|sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours|m|meter|meters|km|kilometer|kilometers|mi|mile|miles|yd|yard|yards)$/;
+const defaultAthleteProfile = {
+  athleteId: "athlete-demo",
+  preferredUnits: "mi",
+  hr: {
+    max: 190,
+    zones: {
+      Z1: [0.5, 0.6],
+      Z2: [0.6, 0.7],
+      Z3: [0.7, 0.8],
+      Z4: [0.8, 0.9],
+      Z5: [0.9, 1.0]
+    }
+  },
+  pace: {
+    threshold: "6:30/mi",
+    zones: {
+      Z1: "9:30-10:30/mi",
+      Z2: "8:15-9:00/mi",
+      Z3: "7:30-8:00/mi",
+      Z4: "6:45-7:15/mi",
+      Z5: "6:00-6:30/mi"
+    }
+  }
+};
 
 function clamp01(value) {
   if (Number.isNaN(value)) return 0;
@@ -113,6 +143,78 @@ function setStatus(message, variant = "info") {
   saveStatusEl.dataset.variant = variant;
 }
 
+function setTpExportStatus(message) {
+  tpExportStatusEl.textContent = message;
+}
+
+function getAthleteProfileInput() {
+  try {
+    const parsed = JSON.parse(tpAthleteProfileEl.value || "{}");
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error("Athlete profile must be a JSON object.");
+    }
+    return parsed;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Invalid athlete profile JSON.";
+    throw new Error(message);
+  }
+}
+
+async function previewTrainingPeaksExport() {
+  const workout = getSelectedWorkout();
+  if (!workout) {
+    setTpExportStatus("Select a workout to export.");
+    return;
+  }
+  clearTpExportPreview();
+  setTpExportStatus("Generating export...");
+  let athleteProfile;
+  try {
+    athleteProfile = getAthleteProfileInput();
+  } catch (error) {
+    setTpExportStatus(error instanceof Error ? error.message : "Invalid athlete profile.");
+    return;
+  }
+
+  const response = await fetch("/api/workouts/export/trainingpeaks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ workout, athlete: athleteProfile })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    setTpExportStatus(data.error || "Export failed.");
+    return;
+  }
+
+  tpExportPayload = data.workout ?? null;
+  tpExportPreviewOutputEl.value = JSON.stringify(tpExportPayload, null, 2);
+  tpExportDownloadButton.disabled = !tpExportPayload;
+  setTpExportStatus("Export ready.");
+}
+
+function downloadTrainingPeaksExport() {
+  if (!tpExportPayload) {
+    setTpExportStatus("Generate an export first.");
+    return;
+  }
+  const workout = getSelectedWorkout();
+  const filename = `${workout?.workoutId || "workout"}-trainingpeaks.json`;
+  const blob = new Blob([JSON.stringify(tpExportPayload, null, 2)], {
+    type: "application/json"
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+  setTpExportStatus("Download started.");
+}
+
 async function fetchWorkouts() {
   const response = await fetch("/api/workouts");
   const data = await response.json();
@@ -128,6 +230,7 @@ function selectWorkout(id) {
   selectedWorkoutId = id;
   selectedSectionIndex = null;
   expandedSections = new Set();
+  clearTpExportPreview();
   render();
 }
 
@@ -139,6 +242,7 @@ function updateWorkout(updatedWorkout) {
   workouts = workouts.map((workout) =>
     workout.workoutId === updatedWorkout.workoutId ? updatedWorkout : workout
   );
+  clearTpExportPreview();
   scheduleValidation();
   render();
 }
@@ -181,6 +285,13 @@ function renderSaveState() {
   } else {
     setStatus("");
   }
+}
+
+function clearTpExportPreview() {
+  tpExportPayload = null;
+  tpExportPreviewOutputEl.value = "";
+  tpExportDownloadButton.disabled = true;
+  setTpExportStatus("");
 }
 
 function renderValidation() {
@@ -726,5 +837,14 @@ function render() {
 addSectionButton.addEventListener("click", addSection);
 newWorkoutButton.addEventListener("click", createWorkout);
 saveButton.addEventListener("click", saveWorkouts);
+tpExportPreviewButton.addEventListener("click", (event) => {
+  event.preventDefault();
+  previewTrainingPeaksExport();
+});
+tpExportDownloadButton.addEventListener("click", (event) => {
+  event.preventDefault();
+  downloadTrainingPeaksExport();
+});
 
+tpAthleteProfileEl.value = JSON.stringify(defaultAthleteProfile, null, 2);
 fetchWorkouts();
