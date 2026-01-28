@@ -14,11 +14,7 @@
       "minLength": 1
     },
     "cues": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
+      "$ref": "#/$defs/cues"
     },
     "structure": {
       "type": "array",
@@ -29,6 +25,33 @@
     }
   },
   "$defs": {
+    "cues": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "execution": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "mental": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "form": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
     "duration": {
       "type": "string",
       "description": "Duration expressed as time or distance, e.g. 10min or 2mi.",
@@ -83,7 +106,7 @@
         },
         {
           "title": "Percent-based target",
-          "required": ["type", "range"],
+          "required": ["type", "range", "basis"],
           "properties": {
             "type": {
               "const": "percent"
@@ -97,6 +120,10 @@
                 "minimum": 0,
                 "maximum": 1
               }
+            },
+            "basis": {
+              "type": "string",
+              "enum": ["maxHr", "threshold", "custom"]
             }
           }
         }
@@ -114,11 +141,7 @@
           "$ref": "#/$defs/target"
         },
         "cues": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
+          "$ref": "#/$defs/cues"
         }
       }
     },
@@ -136,11 +159,7 @@
           "minLength": 1
         },
         "cues": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
+          "$ref": "#/$defs/cues"
         }
       }
     },
@@ -217,7 +236,7 @@
         },
         {
           "type": "object",
-          "required": ["type", "duration", "target"],
+          "required": ["type", "duration", "startTarget", "endTarget"],
           "properties": {
             "type": {
               "const": "progression"
@@ -225,7 +244,10 @@
             "duration": {
               "$ref": "#/$defs/duration"
             },
-            "target": {
+            "startTarget": {
+              "$ref": "#/$defs/target"
+            },
+            "endTarget": {
               "$ref": "#/$defs/target"
             }
           }
