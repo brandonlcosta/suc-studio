@@ -23,6 +23,9 @@ SUC-Studio
   ├─ SUC-Workout Builder
   │     (timeline editor, blocks, zones)
   │
+  ├─ Athlete Zone Resolution (preview/export only)
+  │     (athlete profiles → resolved targets)
+  │
   └─ Canonical Write Adapter
           ↓
      suc-shared-data/workouts/workouts.master.json
@@ -56,6 +59,19 @@ See full schema definition in docs.
 - Athlete calendars
 - Publishing
 - Analytics
+
+## Athlete Zone Resolution (Preview/Export Layer)
+SUC-Workout stays athlete-agnostic. Resolved targets are computed in a separate
+layer and **never** written back to shared data. The target resolution logic
+lives in `src/targetResolution.ts` and provides:
+
+- An athlete zone profile model (HR/pace zones + preferred units).
+- Resolution helpers for HR % max or zone-based targets.
+- Pace zone parsing + unit conversions for preview display.
+- Export-ready target shapes (for future TrainingPeaks/Garmin adapters).
+
+Use `resolveWorkoutPreview(...)` to convert a canonical workout into a resolved
+preview object without mutating the source workout.
 
 ## Acceptance Criteria
 - Timeline editor works
