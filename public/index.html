@@ -56,27 +56,7 @@
             <button id="add-section">Add section</button>
           </div>
         </div>
-        <div class="timeline-command-bar">
-          <div class="command-group">
-            <span class="command-label">Commands</span>
-            <button id="command-reps-up">+ Reps</button>
-            <button id="command-reps-down">- Reps</button>
-            <button id="command-extend-5">+5 min</button>
-            <button id="command-extend-10">+10 min</button>
-            <button id="command-extend-warmcool">Extend W/U + C/D</button>
-            <button id="command-add-strides">Add strides</button>
-          </div>
-          <div class="shortcut-hints">
-            <span class="command-label">Shortcuts</span>
-            <span>⌘/Ctrl+S Save</span>
-            <span>⌘/Ctrl+Z Undo</span>
-            <span>⌘/Ctrl+⇧+Z Redo</span>
-            <span>↑/↓ Move</span>
-            <span>⌘/Ctrl+D Duplicate</span>
-            <span>Del Delete</span>
-            <span>Esc Deselect</span>
-          </div>
-        </div>
+        <div class="timeline-preview" id="timeline-preview">Preview will appear here.</div>
         <div id="timeline-empty" class="empty-state">Select a workout to edit.</div>
         <ol id="timeline-list" class="timeline-list"></ol>
       </section>
@@ -91,23 +71,22 @@
           <h3>Validation</h3>
           <ul id="validation-errors" class="validation-list"></ul>
         </div>
-        <div class="tp-export">
-          <div class="tp-export-header">
-            <h3>TrainingPeaks Export</h3>
-            <span class="tp-export-status" id="tp-export-status"></span>
+        <div class="export-panel">
+          <div class="export-header">
+            <h3>Export</h3>
           </div>
-          <label for="tp-athlete-profile">Athlete profile (JSON)</label>
-          <textarea id="tp-athlete-profile" rows="6"></textarea>
-          <div class="tp-export-actions">
-            <button id="tp-export-preview">Preview export</button>
-            <button id="tp-export-download" class="primary" disabled>Download JSON</button>
+          <div class="export-preview">
+            <span class="export-label">Workout preview</span>
+            <p id="export-preview" class="preview-text"></p>
           </div>
-          <label for="tp-export-preview-output">Export preview</label>
-          <textarea id="tp-export-preview-output" rows="10" readonly></textarea>
+          <div class="export-payload">
+            <span class="export-label">Export payload</span>
+            <pre id="export-payload" class="export-code"></pre>
+          </div>
         </div>
       </section>
     </main>
 
-    <script src="/app.js"></script>
+    <script type="module" src="/app.js"></script>
   </body>
 </html>

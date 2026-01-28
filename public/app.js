@@ -1,9 +1,14 @@
+import { formatWorkoutPreview } from "./workoutPreview.js";
+
 const workoutListEl = document.getElementById("workout-list");
 const timelineListEl = document.getElementById("timeline-list");
 const timelineEmptyEl = document.getElementById("timeline-empty");
 const inspectorFormEl = document.getElementById("inspector-form");
 const inspectorEmptyEl = document.getElementById("inspector-empty");
 const validationErrorsEl = document.getElementById("validation-errors");
+const timelinePreviewEl = document.getElementById("timeline-preview");
+const exportPreviewEl = document.getElementById("export-preview");
+const exportPayloadEl = document.getElementById("export-payload");
 const saveButton = document.getElementById("save-workouts");
 const saveStatusEl = document.getElementById("save-status");
 const sectionTypeSelect = document.getElementById("section-type");
@@ -523,16 +528,8 @@ function renderValidation() {
 
 function renderWorkoutList() {
   workoutListEl.innerHTML = "";
-  const sortedWorkouts = [...workouts].sort((a, b) => {
-    if (workoutSortMode === "duration") {
-      return getWorkoutDurationMinutes(b) - getWorkoutDurationMinutes(a);
-    }
-    if (workoutSortMode === "intensity") {
-      return getWorkoutIntensity(b) - getWorkoutIntensity(a);
-    }
-    return getWorkoutMeta(b.workoutId).lastModified - getWorkoutMeta(a.workoutId).lastModified;
-  });
-  sortedWorkouts.forEach((workout) => {
+  workouts.forEach((workout) => {
+    const preview = formatWorkoutPreview(workout).text;
     const item = document.createElement("li");
     item.className = "workout-item";
     if (workout.workoutId === selectedWorkoutId) {
@@ -546,27 +543,11 @@ function renderWorkoutList() {
     });
     const subtitle = document.createElement("span");
     subtitle.className = "timeline-meta";
-    const duration = getWorkoutDurationMinutes(workout);
-    const intensity = getWorkoutIntensity(workout).toFixed(1);
-    subtitle.textContent = `${workout.workoutId} · ${formatMinutes(duration)} · Intensity ${intensity}`;
-    const tagsWrapper = document.createElement("div");
-    tagsWrapper.className = "workout-tags";
-    const tagsLabel = document.createElement("span");
-    tagsLabel.className = "timeline-meta";
-    tagsLabel.textContent = "Tags";
-    const tagsInput = document.createElement("input");
-    tagsInput.placeholder = "tempo, hills, long run";
-    tagsInput.value = getWorkoutMeta(workout.workoutId).tags.join(", ");
-    tagsInput.addEventListener("input", (event) => {
-      const value = event.target.value;
-      workoutMetaById[workout.workoutId].tags = value
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean);
-      touchWorkout(workout.workoutId);
-      renderWorkoutList();
-    });
-    tagsWrapper.append(tagsLabel, tagsInput);
+    subtitle.textContent = workout.workoutId;
+    const previewLine = document.createElement("span");
+    previewLine.className = "workout-preview";
+    previewLine.textContent = preview || "No preview available";
+    previewLine.title = preview;
     const actions = document.createElement("div");
     actions.className = "workout-actions";
     const selectButton = document.createElement("button");
@@ -579,9 +560,26 @@ function renderWorkoutList() {
     deleteButton.textContent = "Delete";
     deleteButton.addEventListener("click", () => deleteWorkout(workout.workoutId));
     actions.append(selectButton, duplicateButton, deleteButton);
-    item.append(titleInput, subtitle, tagsWrapper, actions);
+    item.append(titleInput, subtitle, previewLine, actions);
     workoutListEl.appendChild(item);
   });
+}
+
+function renderPreview() {
+  const workout = getSelectedWorkout();
+  if (!timelinePreviewEl || !exportPreviewEl || !exportPayloadEl) {
+    return;
+  }
+  if (!workout) {
+    timelinePreviewEl.textContent = "Select a workout to preview.";
+    exportPreviewEl.textContent = "";
+    exportPayloadEl.textContent = "";
+    return;
+  }
+  const preview = formatWorkoutPreview(workout).text;
+  timelinePreviewEl.textContent = preview || "Preview will appear here.";
+  exportPreviewEl.textContent = preview || "Preview will appear here.";
+  exportPayloadEl.textContent = JSON.stringify(workout, null, 2);
 }
 
 function renderTimeline() {
@@ -1276,6 +1274,7 @@ function render() {
   renderInspector();
   renderValidation();
   renderSaveState();
+  renderPreview();
 }
 
 addSectionButton.addEventListener("click", addSection);
