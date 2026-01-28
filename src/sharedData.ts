@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { SHARED_DATA_ROOT } from "./paths";
+import { SHARED_DATA_ROOT, WORKOUTS_MASTER_PATH } from "./paths";
 
 const EVENTS_MASTER_PATH = path.join(
   SHARED_DATA_ROOT,
@@ -13,11 +13,6 @@ const EVENTS_SELECTION_PATH = path.join(
   "events.selection.json"
 );
 const ROUTES_ROOT = path.join(SHARED_DATA_ROOT, "routes");
-const WORKOUTS_MASTER_PATH = path.join(
-  SHARED_DATA_ROOT,
-  "workouts",
-  "workouts.master.json"
-);
 
 function readJsonFile(filePath: string): unknown {
   if (!fs.existsSync(filePath)) {
