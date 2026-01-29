@@ -7,6 +7,7 @@ import { runValidation } from '../validation/engine';
 import { V11_SeasonBlockReferences } from '../validation/rules/V11-season-block-references';
 import { V12_BlockWeekReferences } from '../validation/rules/V12-block-week-references';
 import { V13_WeekWorkoutReferences } from '../validation/rules/V13-week-workout-references';
+import { V14_BlockWeekCount } from '../validation/rules/V14-block-week-count';
 import { Season, Block, Week, Workout } from '../validation/types';
 
 describe('V11: Season -> Block References Exist', () => {
@@ -290,6 +291,51 @@ describe('V13: Week -> Workout References Exist + Version Syntax', () => {
     expect(result).not.toBeNull();
     expect(result?.field_path).toBe('week.workoutIds.mon');
     expect(result?.message).toContain('Workout version not found');
+  });
+});
+
+describe('V14: Block weekIds count matches week records', () => {
+  it('passes when block weekIds length matches weeks referencing blockId', () => {
+    const block: Block = {
+      blockId: 'block-1',
+      weekIds: ['week-1', 'week-2']
+    };
+
+    const weeks: Week[] = [
+      { weekId: 'week-1', blockId: 'block-1' },
+      { weekId: 'week-2', blockId: 'block-1' }
+    ];
+
+    const result = V14_BlockWeekCount.validate(block, {
+      mode: 'load',
+      allSeasons: [],
+      allBlocks: [block],
+      allWeeks: weeks
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it('warns when block weekIds length mismatches weeks referencing blockId', () => {
+    const block: Block = {
+      blockId: 'block-1',
+      weekIds: ['week-1', 'week-2']
+    };
+
+    const weeks: Week[] = [
+      { weekId: 'week-1', blockId: 'block-1' }
+    ];
+
+    const result = V14_BlockWeekCount.validate(block, {
+      mode: 'load',
+      allSeasons: [],
+      allBlocks: [block],
+      allWeeks: weeks
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.severity).toBe('INFO');
+    expect(result?.field_path).toBe('block.weekIds');
   });
 });
 
