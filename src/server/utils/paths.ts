@@ -8,6 +8,7 @@ export const SHARED_DATA_ROOT = path.resolve(__dirname, "../../../../suc-shared-
 export const ROUTES_ROOT = path.join(SHARED_DATA_ROOT, "routes");
 export const EVENTS_ROOT = path.join(SHARED_DATA_ROOT, "events");
 export const WORKOUTS_ROOT = path.join(SHARED_DATA_ROOT, "workouts");
+export const STUDIO_DATA_ROOT = path.resolve(__dirname, "../../../../public/data");
 
 export const EVENTS_MASTER_PATH = path.join(EVENTS_ROOT, "events.master.json");
 export const EVENTS_SELECTION_PATH = path.join(EVENTS_ROOT, "events.selection.json");
