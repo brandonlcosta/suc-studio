@@ -1,6 +1,7 @@
 import http from "http";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import { WORKOUTS_MASTER_PATH } from "./paths";
 import {
   AthleteZoneProfile,
@@ -9,6 +10,9 @@ import {
   resolveWorkoutPreview,
 } from "./targetResolution";
 import { exportTrainingPeaksWorkout } from "./trainingPeaksExport";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT ?? 3000);
 const PUBLIC_ROOT = path.join(__dirname, "..", "public");
