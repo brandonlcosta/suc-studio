@@ -1,0 +1,11 @@
+{
+  "seasonId": "spring-2026-marathon-build",
+  "name": "Spring 2026 Marathon Build",
+  "startDate": "2026-01-12",
+  "endDate": "2026-04-19",
+  "blockIds": [
+    "block-base-1",
+    "block-build-1"
+  ],
+  "status": "draft"
+}
