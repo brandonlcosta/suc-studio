@@ -1,0 +1,26 @@
+[
+  {
+    "id": "ch-early-sunrise",
+    "name": "Early Sunrise Week",
+    "description": "One week of before-dawn starts to build quiet consistency.",
+    "intent": "Reinforce habits that make race season feel calm.",
+    "startRef": { "type": "week", "id": "w-b-2026-base-1-2026-03" },
+    "endRef": { "type": "week", "id": "w-b-2026-base-1-2026-03" },
+    "rules": "Complete at least three runs before 7am. Keep it simple and steady.",
+    "linkedWorkouts": [],
+    "linkedRoutes": [],
+    "status": "active"
+  },
+  {
+    "id": "ch-build-sharpen",
+    "name": "Sharpen the Build",
+    "description": "Short focus block on intentional quality sessions.",
+    "intent": "Support race specificity without adding pressure.",
+    "startRef": { "type": "block", "id": "b-2026-build-1" },
+    "endRef": { "type": "block", "id": "b-2026-build-1" },
+    "rules": "Pick two quality sessions you can execute cleanly. No extra volume.",
+    "linkedWorkouts": [],
+    "linkedRoutes": [],
+    "status": "archived"
+  }
+]

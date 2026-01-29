@@ -3,11 +3,14 @@ import NavigationBar from "./components/NavigationBar";
 import RouteManager from "./screens/RouteManager";
 import EventBuilder from "./screens/EventBuilder";
 import WorkoutBuilder from "./screens/WorkoutBuilder";
+import SeasonBuilder from "./screens/SeasonBuilder";
+import RosterBuilder from "./screens/RosterBuilder";
+import ChallengeBuilder from "./screens/ChallengeBuilder";
 
-type Screen = "routes" | "events" | "workouts";
+type Screen = "routes" | "events" | "workouts" | "season" | "roster" | "challenges";
 
 export default function App() {
-  const [activeScreen, setActiveScreen] = useState<Screen>("routes");
+  const [activeScreen, setActiveScreen] = useState<Screen>("season");
 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
@@ -16,6 +19,9 @@ export default function App() {
       {activeScreen === "routes" && <RouteManager />}
       {activeScreen === "events" && <EventBuilder />}
       {activeScreen === "workouts" && <WorkoutBuilder />}
+      {activeScreen === "season" && <SeasonBuilder />}
+      {activeScreen === "roster" && <RosterBuilder />}
+      {activeScreen === "challenges" && <ChallengeBuilder />}
     </div>
   );
 }
