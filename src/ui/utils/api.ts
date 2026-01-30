@@ -5,6 +5,7 @@ import type {
   EventsMaster,
   EventsSelection,
   RouteLabel,
+  WorkoutsMaster,
 } from "../types";
 
 const API_BASE = "/api";
@@ -72,7 +73,7 @@ export async function saveRouteGroup(
   const response = await fetch(`${API_BASE}/routes/${groupId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
+    body: JSON.stringify({ routeGroupId: groupId, ...data }),
   });
 
   if (!response.ok) {
@@ -138,5 +139,34 @@ export async function saveEventsSelection(data: EventsSelection): Promise<void> 
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || "Failed to save events selection");
+  }
+}
+
+/**
+ * Load workouts.master.json
+ */
+export async function loadWorkoutsMaster(): Promise<WorkoutsMaster> {
+  const response = await fetch(`${API_BASE}/workouts`);
+
+  if (!response.ok) {
+    throw new Error("Failed to load workouts");
+  }
+
+  return response.json();
+}
+
+/**
+ * Save workouts.master.json
+ */
+export async function saveWorkoutsMaster(data: WorkoutsMaster): Promise<void> {
+  const response = await fetch(`${API_BASE}/workouts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to save workouts");
   }
 }

@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx src/server.ts",
+    "dev:ui": "vite --port 5173 --strictPort",
+    "dev:api": "tsx src/server.ts",
+    "dev": "concurrently -k --success=first --names \"UI,API\" \"npm run dev:ui\" \"npm run dev:api\"",
     "probe": "tsx src/index.ts",
     "test": "tsx src/workoutPreview.test.ts"
   },
@@ -21,5 +23,10 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "vite": "^5.0.11"
+  },
+  "dependencies": {
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^6.30.3"
   }
 }

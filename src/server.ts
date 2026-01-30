@@ -1,7 +1,17 @@
 import http from "http";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import { WORKOUTS_MASTER_PATH } from "./paths";
+import {
+  listRouteGroups,
+  getRouteGroup,
+  loadEventsMaster,
+  loadEventsSelection,
+  saveRouteGroup,
+  saveEventsMaster,
+  saveEventsSelection,
+} from "./server/utils/sharedData";
 import {
   AthleteZoneProfile,
   ResolutionOptions,
@@ -11,6 +21,8 @@ import {
 import { exportTrainingPeaksWorkout } from "./trainingPeaksExport";
 
 const PORT = Number(process.env.PORT ?? 3000);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const PUBLIC_ROOT = path.join(__dirname, "..", "public");
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
@@ -20,6 +32,25 @@ type ExportRequest = {
   workout?: WorkoutDefinition;
   athlete?: AthleteZoneProfile;
   options?: ResolutionOptions & { sport?: "run" };
+};
+type RouteVariantInput = {
+  label?: string;
+  gpxContent?: string;
+};
+type RouteGroupPayload = {
+  routeGroupId?: string;
+  name?: string;
+  location?: string;
+  source?: string;
+  notes?: string;
+  variants?: RouteVariantInput[];
+};
+type EventsPayload = {
+  version?: number;
+  events?: JsonValue[];
+};
+type SelectionPayload = {
+  selectedEventIds?: JsonValue;
 };
 
 const durationPattern =
@@ -220,6 +251,21 @@ function sendFile(res: http.ServerResponse, filePath: string, contentType: strin
   fs.createReadStream(filePath).pipe(res);
 }
 
+function sendTimelineIndex(res: http.ServerResponse): void {
+  const indexPath = path.join(PUBLIC_ROOT, "index.html");
+  if (!fs.existsSync(indexPath)) {
+    res.writeHead(404);
+    res.end("Not found");
+    return;
+  }
+  const raw = fs.readFileSync(indexPath, "utf8");
+  const updated = raw
+    .replace('href="/styles.css"', 'href="/timeline/styles.css"')
+    .replace('src="/app.js"', 'src="/timeline/app.js"');
+  res.writeHead(200, { "Content-Type": "text/html" });
+  res.end(updated);
+}
+
 function validateWorkouts(workouts: Workout[]): Record<string, string[]> {
   const errorsById: Record<string, string[]> = {};
   workouts.forEach((workout) => {
@@ -234,6 +280,222 @@ function validateWorkouts(workouts: Workout[]): Record<string, string[]> {
 
 const server = http.createServer(async (req, res) => {
   const url = req.url ?? "/";
+  if (url === "/api/routes" && req.method === "GET") {
+    try {
+      const routeGroups = listRouteGroups();
+      sendJson(res, 200, { routeGroups });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load routes.";
+      sendJson(res, 500, { error: message });
+    }
+    return;
+  }
+
+  if (url.startsWith("/api/routes/") && req.method === "GET") {
+    try {
+      const groupId = url.replace("/api/routes/", "");
+      const routeGroup = getRouteGroup(groupId);
+      if (!routeGroup) {
+        sendJson(res, 404, { error: "Route group not found." });
+        return;
+      }
+      sendJson(res, 200, routeGroup);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load route group.";
+      sendJson(res, 500, { error: message });
+    }
+    return;
+  }
+
+  if (url === "/api/events" && req.method === "GET") {
+    try {
+      const eventsMaster = loadEventsMaster();
+      sendJson(res, 200, eventsMaster as JsonValue);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load events.";
+      sendJson(res, 500, { error: message });
+    }
+    return;
+  }
+
+  if (url === "/api/events/selection" && req.method === "GET") {
+    try {
+      const eventsSelection = loadEventsSelection();
+      sendJson(res, 200, eventsSelection as JsonValue);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to load event selection.";
+      sendJson(res, 500, { error: message });
+    }
+    return;
+  }
+
+  if (url.startsWith("/api/routes/") && req.method === "POST") {
+    try {
+      const groupId = url.replace("/api/routes/", "");
+      const body = (await parseJsonBody(req)) as RouteGroupPayload;
+
+      if (!body || typeof body !== "object") {
+        sendJson(res, 400, { success: false, error: "Invalid route group payload." });
+        return;
+      }
+      if (!isNonEmptyString(groupId)) {
+        sendJson(res, 400, { success: false, error: "Route group ID is required." });
+        return;
+      }
+      if (!isNonEmptyString(body.routeGroupId)) {
+        sendJson(res, 400, { success: false, error: "routeGroupId is required." });
+        return;
+      }
+      if (body.routeGroupId !== groupId) {
+        sendJson(res, 400, {
+          success: false,
+          error: "routeGroupId must match the URL parameter.",
+        });
+        return;
+      }
+      if (!isNonEmptyString(body.name)) {
+        sendJson(res, 400, { success: false, error: "name is required." });
+        return;
+      }
+      if (!isNonEmptyString(body.location)) {
+        sendJson(res, 400, { success: false, error: "location is required." });
+        return;
+      }
+      if (!Array.isArray(body.variants) || body.variants.length === 0) {
+        sendJson(res, 400, { success: false, error: "variants are required." });
+        return;
+      }
+
+      const variants = body.variants.map((variant, index) => {
+        if (!isNonEmptyString(variant.label)) {
+          throw new Error(`variants[${index}].label is required.`);
+        }
+        if (!isNonEmptyString(variant.gpxContent)) {
+          throw new Error(`variants[${index}].gpxContent is required.`);
+        }
+        return {
+          label: variant.label,
+          gpxContent: variant.gpxContent,
+        };
+      });
+
+      const meta = {
+        routeGroupId: body.routeGroupId,
+        name: body.name,
+        location: body.location,
+        source: isNonEmptyString(body.source) ? body.source : "SUC",
+        notes: isNonEmptyString(body.notes) ? body.notes : "",
+        variants: variants.map((variant) => variant.label),
+      };
+
+      saveRouteGroup(groupId, meta, variants);
+      sendJson(res, 200, { success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to save route group.";
+      sendJson(res, 400, { success: false, error: message });
+    }
+    return;
+  }
+
+  if (url === "/api/events" && req.method === "POST") {
+    try {
+      const body = (await parseJsonBody(req)) as EventsPayload;
+      if (!body || typeof body !== "object") {
+        sendJson(res, 400, { success: false, error: "Invalid events payload." });
+        return;
+      }
+      if (!Array.isArray(body.events)) {
+        sendJson(res, 400, { success: false, error: "events must be an array." });
+        return;
+      }
+
+      let version = body.version;
+      if (version !== undefined && typeof version !== "number") {
+        sendJson(res, 400, { success: false, error: "version must be a number." });
+        return;
+      }
+      if (version === undefined) {
+        try {
+          const existing = loadEventsMaster() as { version?: number };
+          if (typeof existing.version === "number") {
+            version = existing.version;
+          }
+        } catch {
+          version = 1;
+        }
+      }
+
+      saveEventsMaster({
+        version: version ?? 1,
+        events: body.events,
+      });
+
+      sendJson(res, 200, { success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to save events.";
+      sendJson(res, 400, { success: false, error: message });
+    }
+    return;
+  }
+
+  if (url === "/api/events/selection" && req.method === "POST") {
+    try {
+      const body = (await parseJsonBody(req)) as SelectionPayload;
+      if (!body || typeof body !== "object") {
+        sendJson(res, 400, { success: false, error: "Invalid selection payload." });
+        return;
+      }
+      if (!Array.isArray(body.selectedEventIds)) {
+        sendJson(res, 400, {
+          success: false,
+          error: "selectedEventIds must be an array.",
+        });
+        return;
+      }
+
+      const eventsMaster = loadEventsMaster() as { events?: { eventId?: string }[] };
+      const existingIds = new Set(
+        Array.isArray(eventsMaster.events)
+          ? eventsMaster.events.map((event) => String(event.eventId ?? ""))
+          : []
+      );
+
+      const invalidIds = body.selectedEventIds.filter(
+        (eventId) => !existingIds.has(String(eventId))
+      );
+      if (invalidIds.length > 0) {
+        sendJson(res, 400, {
+          success: false,
+          error: `Unknown event IDs: ${invalidIds.join(", ")}`,
+        });
+        return;
+      }
+
+      let version = 1;
+      try {
+        const existingSelection = loadEventsSelection() as { version?: number };
+        if (typeof existingSelection.version === "number") {
+          version = existingSelection.version;
+        }
+      } catch {
+        version = 1;
+      }
+
+      saveEventsSelection({
+        version,
+        selectedEventIds: body.selectedEventIds.map((id) => String(id)),
+      });
+
+      sendJson(res, 200, { success: true });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to save event selection.";
+      sendJson(res, 400, { success: false, error: message });
+    }
+    return;
+  }
+
   if (url.startsWith("/api/workouts/validate") && req.method === "POST") {
     try {
       const body = (await parseJsonBody(req)) as { workouts?: Workout[] };
@@ -300,17 +562,28 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (url === "/" || url === "/index.html") {
-    sendFile(res, path.join(PUBLIC_ROOT, "index.html"), "text/html");
+  if (url === "/") {
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("Studio UI is served by Vite dev server.");
     return;
   }
 
-  if (url === "/styles.css") {
+  if (url === "/timeline" || url === "/timeline/") {
+    sendTimelineIndex(res);
+    return;
+  }
+
+  if (url === "/timeline/index.html") {
+    sendTimelineIndex(res);
+    return;
+  }
+
+  if (url === "/timeline/styles.css") {
     sendFile(res, path.join(PUBLIC_ROOT, "styles.css"), "text/css");
     return;
   }
 
-  if (url === "/app.js") {
+  if (url === "/timeline/app.js") {
     sendFile(res, path.join(PUBLIC_ROOT, "app.js"), "text/javascript");
     return;
   }
@@ -320,5 +593,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`[Studio] Timeline editor running on http://localhost:${PORT}`);
+  console.log(`[Studio] API server running on http://localhost:${PORT}`);
+  console.log(`[Studio] Timeline editor running on http://localhost:${PORT}/timeline`);
 });

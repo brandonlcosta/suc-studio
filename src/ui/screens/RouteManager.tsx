@@ -1,8 +1,8 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import DropZone from "../components/DropZone";
 import RouteCard from "../components/RouteCard";
-import type { StagedRoute, RouteLabel } from "../types";
-import { importGPX, saveRouteGroup } from "../utils/api";
+import type { StagedRoute, RouteLabel, RouteGroupSummary } from "../types";
+import { importGPX, saveRouteGroup, listRouteGroups } from "../utils/api";
 import { labelForRank } from "../utils/routeLabels";
 
 export default function RouteManager() {
@@ -10,6 +10,9 @@ export default function RouteManager() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [existingGroups, setExistingGroups] = useState<RouteGroupSummary[]>([]);
+  const [isLoadingGroups, setIsLoadingGroups] = useState(false);
+  const [groupsError, setGroupsError] = useState<string | null>(null);
 
   // Form state
   const [routeGroupId, setRouteGroupId] = useState("");
@@ -21,6 +24,35 @@ export default function RouteManager() {
     () => [...routes].sort((a, b) => a.distanceMi - b.distanceMi),
     [routes]
   );
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadGroups = async () => {
+      setIsLoadingGroups(true);
+      setGroupsError(null);
+      try {
+        const groups = await listRouteGroups();
+        if (isMounted) {
+          setExistingGroups(groups);
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to load routes";
+        console.error("[Studio] Failed to load route groups:", err);
+        if (isMounted) {
+          setGroupsError(message);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingGroups(false);
+        }
+      }
+    };
+
+    loadGroups();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleFilesSelected = useCallback(async (files: File[]) => {
     setIsProcessing(true);
@@ -144,6 +176,34 @@ export default function RouteManager() {
 
         <DropZone onFilesSelected={handleFilesSelected} disabled={isProcessing} />
 
+        <div style={{ marginTop: "2rem" }}>
+          <h3 style={{ marginBottom: "0.5rem" }}>Existing Route Groups</h3>
+          {isLoadingGroups && (
+            <div style={{ color: "#4CAF50" }}>Loading routes...</div>
+          )}
+          {groupsError && (
+            <div style={{ color: "#c62828", whiteSpace: "pre-wrap" }}>
+              {groupsError}
+            </div>
+          )}
+          {!isLoadingGroups && !groupsError && existingGroups.length === 0 && (
+            <div style={{ color: "#666" }}>No route groups found.</div>
+          )}
+          {existingGroups.length > 0 && (
+            <pre
+              style={{
+                background: "#f3f4f6",
+                padding: "0.75rem",
+                borderRadius: "4px",
+                overflowX: "auto",
+                fontSize: "0.85rem",
+              }}
+            >
+              {JSON.stringify(existingGroups, null, 2)}
+            </pre>
+          )}
+        </div>
+
         {isProcessing && (
           <div style={{ marginTop: "1rem", color: "#4CAF50" }}>
             Processing files...
@@ -260,6 +320,39 @@ export default function RouteManager() {
         )}
 
         <div style={{ marginTop: "1.5rem" }}>
+          <div style={{ marginBottom: "1rem" }}>
+            <strong>Existing Route Groups</strong>
+            {isLoadingGroups && (
+              <div style={{ marginTop: "0.5rem", color: "#4CAF50" }}>
+                Loading routes...
+              </div>
+            )}
+            {groupsError && (
+              <div style={{ marginTop: "0.5rem", color: "#c62828" }}>
+                {groupsError}
+              </div>
+            )}
+            {!isLoadingGroups && !groupsError && existingGroups.length === 0 && (
+              <div style={{ marginTop: "0.5rem", color: "#666" }}>
+                No route groups found.
+              </div>
+            )}
+            {existingGroups.length > 0 && (
+              <pre
+                style={{
+                  marginTop: "0.5rem",
+                  background: "#f3f4f6",
+                  padding: "0.75rem",
+                  borderRadius: "4px",
+                  overflowX: "auto",
+                  fontSize: "0.8rem",
+                }}
+              >
+                {JSON.stringify(existingGroups, null, 2)}
+              </pre>
+            )}
+          </div>
+
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             {orderedRoutes.map((route) => (
               <RouteCard
