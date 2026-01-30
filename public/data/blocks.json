@@ -1,0 +1,26 @@
+[
+  {
+    "id": "b-2026-base-1",
+    "seasonId": "season-2026",
+    "name": "Base 1",
+    "startWeek": "2026-01",
+    "lengthWeeks": 8,
+    "intent": "Build aerobic capacity and stack durable mileage without rush.",
+    "focusTags": ["aerobic", "durability"],
+    "milestones": [
+      { "week": "2026-08", "type": "milestone", "label": "8-week check" }
+    ]
+  },
+  {
+    "id": "b-2026-build-1",
+    "seasonId": "season-2026",
+    "name": "Build 1",
+    "startWeek": "2026-09",
+    "lengthWeeks": 8,
+    "intent": "Shift toward threshold strength and marathon-specific rhythm.",
+    "focusTags": ["threshold", "specificity"],
+    "milestones": [
+      { "week": "2026-16", "type": "race", "label": "Spring Marathon" }
+    ]
+  }
+]

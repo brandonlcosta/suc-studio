@@ -1,4 +1,4 @@
-type Screen = "routes" | "events" | "workouts";
+type Screen = "routes" | "events" | "workouts" | "season" | "roster" | "challenges";
 
 interface NavigationBarProps {
   activeScreen: Screen;
@@ -7,6 +7,9 @@ interface NavigationBarProps {
 
 export default function NavigationBar({ activeScreen, onNavigate }: NavigationBarProps) {
   const screens: Array<{ id: Screen; label: string }> = [
+    { id: "season", label: "Season Builder" },
+    { id: "roster", label: "Roster Builder" },
+    { id: "challenges", label: "Challenge Builder" },
     { id: "routes", label: "Route Manager" },
     { id: "events", label: "Event Builder" },
     { id: "workouts", label: "Workout Builder" },

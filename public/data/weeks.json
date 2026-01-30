@@ -1,0 +1,176 @@
+[
+  {
+    "id": "w-b-2026-base-1-2026-01",
+    "blockId": "b-2026-base-1",
+    "weekKey": "2026-01",
+    "indexInBlock": 1,
+    "title": "Week 1: Base Focus",
+    "focusTags": [
+      "aerobic",
+      "durability"
+    ]
+  },
+  {
+    "id": "w-b-2026-base-1-2026-02",
+    "blockId": "b-2026-base-1",
+    "weekKey": "2026-02",
+    "indexInBlock": 2,
+    "title": "Week 2: Base Focus",
+    "focusTags": [
+      "aerobic",
+      "durability"
+    ]
+  },
+  {
+    "id": "w-b-2026-base-1-2026-03",
+    "blockId": "b-2026-base-1",
+    "weekKey": "2026-03",
+    "indexInBlock": 3,
+    "title": "Week 3: Base Focus",
+    "focusTags": [
+      "aerobic",
+      "durability"
+    ]
+  },
+  {
+    "id": "w-b-2026-base-1-2026-04",
+    "blockId": "b-2026-base-1",
+    "weekKey": "2026-04",
+    "indexInBlock": 4,
+    "title": "Week 4: Base Focus",
+    "focusTags": [
+      "aerobic",
+      "durability"
+    ]
+  },
+  {
+    "id": "w-b-2026-base-1-2026-05",
+    "blockId": "b-2026-base-1",
+    "weekKey": "2026-05",
+    "indexInBlock": 5,
+    "title": "Week 5: Base Focus",
+    "focusTags": [
+      "aerobic",
+      "durability"
+    ]
+  },
+  {
+    "id": "w-b-2026-base-1-2026-06",
+    "blockId": "b-2026-base-1",
+    "weekKey": "2026-06",
+    "indexInBlock": 6,
+    "title": "Week 6: Base Focus",
+    "focusTags": [
+      "aerobic",
+      "durability"
+    ]
+  },
+  {
+    "id": "w-b-2026-base-1-2026-07",
+    "blockId": "b-2026-base-1",
+    "weekKey": "2026-07",
+    "indexInBlock": 7,
+    "title": "Week 7: Base Focus",
+    "focusTags": [
+      "checkpoint"
+    ]
+  },
+  {
+    "id": "w-b-2026-base-1-2026-08",
+    "blockId": "b-2026-base-1",
+    "weekKey": "2026-08",
+    "indexInBlock": 8,
+    "title": "Week 8: Base Focus",
+    "focusTags": [
+      "checkpoint"
+    ]
+  },
+  {
+    "id": "w-b-2026-build-1-2026-09",
+    "blockId": "b-2026-build-1",
+    "weekKey": "2026-09",
+    "indexInBlock": 1,
+    "title": "Week 1: Build Focus",
+    "focusTags": [
+      "threshold",
+      "specificity"
+    ]
+  },
+  {
+    "id": "w-b-2026-build-1-2026-10",
+    "blockId": "b-2026-build-1",
+    "weekKey": "2026-10",
+    "indexInBlock": 2,
+    "title": "Week 2: Build Focus",
+    "focusTags": [
+      "threshold",
+      "specificity"
+    ]
+  },
+  {
+    "id": "w-b-2026-build-1-2026-11",
+    "blockId": "b-2026-build-1",
+    "weekKey": "2026-11",
+    "indexInBlock": 3,
+    "title": "Week 3: Build Focus",
+    "focusTags": [
+      "threshold",
+      "specificity"
+    ]
+  },
+  {
+    "id": "w-b-2026-build-1-2026-12",
+    "blockId": "b-2026-build-1",
+    "weekKey": "2026-12",
+    "indexInBlock": 4,
+    "title": "Week 4: Build Focus",
+    "focusTags": [
+      "threshold",
+      "specificity"
+    ]
+  },
+  {
+    "id": "w-b-2026-build-1-2026-13",
+    "blockId": "b-2026-build-1",
+    "weekKey": "2026-13",
+    "indexInBlock": 5,
+    "title": "Week 5: Build Focus",
+    "focusTags": [
+      "threshold",
+      "specificity"
+    ]
+  },
+  {
+    "id": "w-b-2026-build-1-2026-14",
+    "blockId": "b-2026-build-1",
+    "weekKey": "2026-14",
+    "indexInBlock": 6,
+    "title": "Week 6: Build Focus",
+    "focusTags": [
+      "threshold",
+      "specificity"
+    ]
+  },
+  {
+    "id": "w-b-2026-build-1-2026-15",
+    "blockId": "b-2026-build-1",
+    "weekKey": "2026-15",
+    "indexInBlock": 7,
+    "title": "Week 7: Build Focus",
+    "focusTags": [
+      "threshold",
+      "specificity"
+    ]
+  },
+  {
+    "id": "w-b-2026-build-1-2026-16",
+    "blockId": "b-2026-build-1",
+    "weekKey": "2026-16",
+    "indexInBlock": 8,
+    "title": "Week 8: Build Focus",
+    "focusTags": [
+      "threshold",
+      "specificity"
+    ]
+  }
+]

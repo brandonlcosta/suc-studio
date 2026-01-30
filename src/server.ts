@@ -20,6 +20,9 @@ import {
 } from "./targetResolution";
 import { exportTrainingPeaksWorkout } from "./trainingPeaksExport";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const PORT = Number(process.env.PORT ?? 3000);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

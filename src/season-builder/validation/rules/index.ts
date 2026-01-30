@@ -17,6 +17,7 @@ import { V10_Rules } from './V10-week-start-monday';
 import { V11_Rules } from './V11-season-block-references';
 import { V12_Rules } from './V12-block-week-references';
 import { V13_Rules } from './V13-week-workout-references';
+import { V14_Rules } from './V14-block-week-count';
 import { ValidationRule } from '../types';
 
 /**
@@ -31,7 +32,7 @@ export const ALL_CRITICAL_RULES: ValidationRule[] = [
 ];
 
 /**
- * All Day 3 validation rules (V06-V10, BLOCKING only)
+ * All Day 3/4 validation rules (V06-V14)
  */
 export const ALL_BLOCKING_RULES: ValidationRule[] = [
   ...V06_Rules,
@@ -41,7 +42,8 @@ export const ALL_BLOCKING_RULES: ValidationRule[] = [
   ...V10_Rules,
   ...V11_Rules,
   ...V12_Rules,
-  ...V13_Rules
+  ...V13_Rules,
+  ...V14_Rules
 ];
 
 /**
@@ -60,5 +62,6 @@ export {
   V10_Rules,
   V11_Rules,
   V12_Rules,
-  V13_Rules
+  V13_Rules,
+  V14_Rules
 };
