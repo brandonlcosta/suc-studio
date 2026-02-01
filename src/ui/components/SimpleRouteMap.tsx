@@ -125,6 +125,7 @@ export default function SimpleRouteMap({
   const markersRef = useRef<Map<string, MarkerEntry>>(new Map());
   const onPoiSelectRef = useRef<typeof onPoiSelect>(onPoiSelect);
   const onPoiDragEndRef = useRef<typeof onPoiDragEnd>(onPoiDragEnd);
+  const draggingPoiIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     onPoiSelectRef.current = onPoiSelect;
@@ -319,17 +320,23 @@ export default function SimpleRouteMap({
           .addTo(map);
 
         marker.on("dragstart", () => {
+          draggingPoiIdRef.current = poi.id;
           onPoiSelectRef.current?.(poi.id);
+          element.style.cursor = "grabbing";
         });
         marker.on("dragend", () => {
           const lngLat = marker.getLngLat();
+          draggingPoiIdRef.current = null;
+          element.style.cursor = allowPoiDrag && hasVariant ? "grab" : "pointer";
           onPoiDragEndRef.current?.(poi.id, { lat: lngLat.lat, lon: lngLat.lng });
         });
 
         entry = { marker, element };
         markersRef.current.set(poi.id, entry);
       } else {
-        entry.marker.setLngLat([placement.lon, placement.lat]);
+        if (draggingPoiIdRef.current !== poi.id) {
+          entry.marker.setLngLat([placement.lon, placement.lat]);
+        }
         if (typeof entry.marker.setDraggable === "function") {
           entry.marker.setDraggable(allowPoiDrag && hasVariant);
         }

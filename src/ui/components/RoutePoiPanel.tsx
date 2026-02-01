@@ -105,7 +105,7 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
     return () => {
       isMounted = false;
     };
-  }, [routeGroupId]);
+  }, [routeGroupId, resetForm]);
 
   useEffect(() => {
     let isMounted = true;
@@ -225,7 +225,7 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
 
   const handlePoiSelect = (poiId: string) => {
     setActivePoiId(poiId);
-    console.log("[POI_SELECTED]", { poiId, routeGroupId, variant: activeVariantLabel || null });
+    console.log("POI_SELECTED", { poiId, routeGroupId, variant: activeVariantLabel || null });
   };
 
   const handlePoiDragEnd = async (poiId: string, position: { lat: number; lon: number }) => {
@@ -252,7 +252,7 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
       });
       setPois(Array.isArray(result.pois) ? (result.pois as RoutePoiRecord[]) : []);
       setMessage(`POI moved (${poiId}).`);
-      console.log("[POI_MOVED]", {
+      console.log("POI_MOVED", {
         poiId,
         routeGroupId,
         variant: activeVariantLabel || null,
@@ -273,7 +273,7 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
     resetForm();
     if (target) {
       setMessage(`POI deleted (${target.id}).`);
-      console.log("[POI_DELETED]", { poiId: target.id, routeGroupId });
+      console.log("POI_DELETED", { poiId: target.id, routeGroupId });
     }
   };
 
@@ -336,15 +336,18 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
               const isSelected = selectedVariants.includes(label);
               const isDisabled = isEditing && !isSelected;
               return (
-                <label key={label} style={{ display: "flex", gap: "0.4rem", opacity: isDisabled ? 0.5 : 1 }}>
-                <input
-                  type="checkbox"
-                  checked={isSelected}
-                  onChange={() => handleVariantToggle(label)}
-                  disabled={isDisabled}
-                />
-                <span style={{ color: "#f5f5f5" }}>{label}</span>
-              </label>
+                <label
+                  key={label}
+                  style={{ display: "flex", gap: "0.4rem", opacity: isDisabled ? 0.5 : 1 }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => handleVariantToggle(label)}
+                    disabled={isDisabled}
+                  />
+                  <span style={{ color: "#f5f5f5" }}>{label}</span>
+                </label>
               );
             })}
           </div>
