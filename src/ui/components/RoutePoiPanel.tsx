@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { RouteLabel } from "../types";
 import { LABELS } from "../utils/routeLabels";
 import {
@@ -9,6 +9,7 @@ import {
 import SimpleRouteMap from "./SimpleRouteMap";
 
 const POI_TYPES = ["aid", "water", "summit", "fork", "hazard", "viewpoint"];
+const ROUTE_LABELS = new Set<RouteLabel>(LABELS);
 
 function slugify(value: string): string {
   return value
@@ -16,6 +17,10 @@ function slugify(value: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)+/g, "")
     .slice(0, 64);
+}
+
+function isRouteLabel(value: string): value is RouteLabel {
+  return ROUTE_LABELS.has(value as RouteLabel);
 }
 
 interface RoutePoiPanelProps {
@@ -43,11 +48,24 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
   const [poiTitle, setPoiTitle] = useState("");
   const [selectedVariants, setSelectedVariants] = useState<RouteLabel[]>([]);
   const [availableVariants, setAvailableVariants] = useState<RouteLabel[]>(LABELS);
-  const [activeVariant, setActiveVariant] = useState<RouteLabel>("MED");
+  const [activeVariant, setActiveVariant] = useState<RouteLabel | "">("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pois, setPois] = useState<RoutePoiRecord[]>([]);
-  const previewVariant = activeVariant;
+  const [activePoiId, setActivePoiId] = useState<string | null>(null);
+
+  const resetForm = useCallback(() => {
+    setPoiType("");
+    setPoiTitle("");
+    setSelectedVariants([]);
+  }, []);
+
+  const variantOptions = availableVariants.length > 0 ? availableVariants : LABELS;
+  const activeVariantLabel = variantOptions.includes(activeVariant as RouteLabel)
+    ? (activeVariant as RouteLabel)
+    : "";
+  const previewVariant = activeVariantLabel || undefined;
+  const canDragPois = Boolean(activeVariantLabel);
 
   useEffect(() => {
     let isMounted = true;
@@ -56,6 +74,9 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
 
     if (!routeGroupId.trim()) {
       setAvailableVariants([]);
+      setActiveVariant("");
+      setActivePoiId(null);
+      resetForm();
       return;
     }
 
@@ -65,13 +86,18 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
         if (!isMounted) return;
         setAvailableVariants(variants);
         setActiveVariant((prev) =>
-          variants.includes(prev) ? prev : variants.includes("XL") ? "XL" : variants[0] ?? "MED"
+          variants.includes(prev as RouteLabel)
+            ? (prev as RouteLabel)
+            : variants.includes("XL")
+              ? "XL"
+              : variants[0] ?? ""
         );
       })
       .catch((err) => {
         const msg = err instanceof Error ? err.message : "Failed to load route group";
         if (isMounted) {
           setAvailableVariants(LABELS);
+          setActiveVariant("MED");
           setError(msg);
         }
       });
@@ -85,6 +111,7 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
     let isMounted = true;
     if (!routeGroupId.trim()) {
       setPois([]);
+      setActivePoiId(null);
       return () => {
         isMounted = false;
       };
@@ -106,10 +133,50 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
     };
   }, [routeGroupId]);
 
+  useEffect(() => {
+    if (!activePoiId) return;
+    const activePoi = pois.find((poi) => poi.id === activePoiId);
+    if (!activePoi) {
+      setActivePoiId(null);
+      return;
+    }
+    setPoiType(activePoi.type ?? "");
+    setPoiTitle(activePoi.title ?? "");
+    const variants = Object.keys(activePoi.variants ?? {}).filter(isRouteLabel);
+    setSelectedVariants(variants);
+  }, [activePoiId, pois]);
+
+  useEffect(() => {
+    if (!activePoiId || !activeVariantLabel) return;
+    const activePoi = pois.find((poi) => poi.id === activePoiId);
+    if (!activePoi) return;
+    if (!activePoi.variants?.[activeVariantLabel]) {
+      setActivePoiId(null);
+    }
+  }, [activePoiId, activeVariantLabel, pois]);
+
   const handleVariantToggle = (label: RouteLabel) => {
     setSelectedVariants((prev) => {
-      if (prev.includes(label)) return prev.filter((item) => item !== label);
-      return [...prev, label];
+      const next = prev.includes(label)
+        ? prev.filter((item) => item !== label)
+        : [...prev, label];
+
+      if (activePoiId) {
+        setPois((prevPois) =>
+          prevPois.map((poi) => {
+            if (poi.id !== activePoiId) return poi;
+            const nextVariants = { ...(poi.variants ?? {}) };
+            Object.keys(nextVariants).forEach((key) => {
+              if (!next.includes(key as RouteLabel)) {
+                delete nextVariants[key];
+              }
+            });
+            return { ...poi, variants: nextVariants };
+          })
+        );
+      }
+
+      return next;
     });
   };
 
@@ -117,11 +184,17 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
     routeGroupId.trim().length > 0 &&
     poiType.trim().length > 0 &&
     poiTitle.trim().length > 0 &&
-    selectedVariants.length > 0;
+    selectedVariants.length > 0 &&
+    !activePoiId;
 
   const handleMapClick = async (lat: number, lon: number) => {
     setMessage(null);
     setError(null);
+    if (activePoiId) {
+      setActivePoiId(null);
+      resetForm();
+      return;
+    }
     if (!readyToSnap) {
       setError("Select a type, title, and at least one variant before clicking the map.");
       return;
@@ -129,7 +202,7 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
 
     try {
       const poiId = `${slugify(poiType)}-${slugify(poiTitle)}`.slice(0, 80);
-      await snapRoutePoi(routeGroupId, {
+      const result = await snapRoutePoi(routeGroupId, {
         poi: {
           id: poiId,
           title: poiTitle.trim(),
@@ -143,11 +216,64 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
       setPoiType("");
       setPoiTitle("");
       setSelectedVariants([]);
-      const refreshed = await getRoutePois(routeGroupId);
-      setPois(Array.isArray(refreshed.pois) ? refreshed.pois : []);
+      setPois(Array.isArray(result.pois) ? (result.pois as RoutePoiRecord[]) : []);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to snap POI";
       setError(msg);
+    }
+  };
+
+  const handlePoiSelect = (poiId: string) => {
+    setActivePoiId(poiId);
+    console.log("[POI_SELECTED]", { poiId, routeGroupId, variant: activeVariantLabel || null });
+  };
+
+  const handlePoiDragEnd = async (poiId: string, position: { lat: number; lon: number }) => {
+    if (!canDragPois || !routeGroupId.trim()) return;
+    const target = pois.find((poi) => poi.id === poiId);
+    if (!target) return;
+    const variantsToSnap = Object.keys(target.variants ?? {})
+      .filter(isRouteLabel)
+      .filter((label) => variantOptions.includes(label));
+    if (variantsToSnap.length === 0) {
+      setError("Selected POI has no variants to snap.");
+      return;
+    }
+
+    try {
+      const result = await snapRoutePoi(routeGroupId, {
+        poi: {
+          id: target.id,
+          title: target.title,
+          type: target.type,
+        },
+        click: { lat: position.lat, lon: position.lon },
+        variants: variantsToSnap,
+      });
+      setPois(Array.isArray(result.pois) ? (result.pois as RoutePoiRecord[]) : []);
+      setMessage(`POI moved (${poiId}).`);
+      console.log("[POI_MOVED]", {
+        poiId,
+        routeGroupId,
+        variant: activeVariantLabel || null,
+        lat: position.lat,
+        lon: position.lon,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to move POI";
+      setError(msg);
+    }
+  };
+
+  const handleDeletePoi = () => {
+    if (!activePoiId) return;
+    const target = pois.find((poi) => poi.id === activePoiId);
+    setPois((prev) => prev.filter((poi) => poi.id !== activePoiId));
+    setActivePoiId(null);
+    resetForm();
+    if (target) {
+      setMessage(`POI deleted (${target.id}).`);
+      console.log("[POI_DELETED]", { poiId: target.id, routeGroupId });
     }
   };
 
@@ -160,7 +286,17 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
           <label style={{ fontSize: "0.85rem", color: "#999999" }}>POI Type</label>
           <select
             value={poiType}
-            onChange={(e) => setPoiType(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              setPoiType(value);
+              if (activePoiId) {
+                setPois((prev) =>
+                  prev.map((poi) =>
+                    poi.id === activePoiId ? { ...poi, type: value } : poi
+                  )
+                );
+              }
+            }}
             style={{ padding: "0.5rem", border: "1px solid #2b2b2b" }}
           >
             <option value="">Select type</option>
@@ -176,7 +312,17 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
           <label style={{ fontSize: "0.85rem", color: "#999999" }}>Title</label>
           <input
             value={poiTitle}
-            onChange={(e) => setPoiTitle(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              setPoiTitle(value);
+              if (activePoiId) {
+                setPois((prev) =>
+                  prev.map((poi) =>
+                    poi.id === activePoiId ? { ...poi, title: value } : poi
+                  )
+                );
+              }
+            }}
             style={{ padding: "0.5rem", border: "1px solid #2b2b2b" }}
             placeholder="Mitchell Canyon Aid"
           />
@@ -185,16 +331,22 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
         <div style={{ display: "grid", gap: "0.5rem" }}>
           <label style={{ fontSize: "0.85rem", color: "#999999" }}>Variants</label>
           <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-            {LABELS.map((label) => (
-              <label key={label} style={{ display: "flex", gap: "0.4rem" }}>
+            {variantOptions.map((label) => {
+              const isEditing = Boolean(activePoiId);
+              const isSelected = selectedVariants.includes(label);
+              const isDisabled = isEditing && !isSelected;
+              return (
+                <label key={label} style={{ display: "flex", gap: "0.4rem", opacity: isDisabled ? 0.5 : 1 }}>
                 <input
                   type="checkbox"
-                  checked={selectedVariants.includes(label)}
+                  checked={isSelected}
                   onChange={() => handleVariantToggle(label)}
+                  disabled={isDisabled}
                 />
                 <span style={{ color: "#f5f5f5" }}>{label}</span>
               </label>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -204,9 +356,10 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
           </label>
           <select
             value={activeVariant}
-            onChange={(e) => setActiveVariant(e.target.value as RouteLabel)}
+            onChange={(e) => setActiveVariant(e.target.value as RouteLabel | "")}
             style={{ padding: "0.5rem", border: "1px solid #2b2b2b" }}
           >
+            <option value="">Select variant</option>
             {availableVariants.map((label) => (
               <option key={label} value={label}>
                 {label}
@@ -214,6 +367,26 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
             ))}
           </select>
         </div>
+
+        {activePoiId && (
+          <div>
+            <button
+              type="button"
+              onClick={handleDeletePoi}
+              style={{
+                padding: "0.4rem 0.75rem",
+                borderRadius: "4px",
+                border: "1px solid #3a1a1a",
+                background: "#2a1212",
+                color: "#ffb4b4",
+                cursor: "pointer",
+                fontSize: "0.8rem",
+              }}
+            >
+              Delete POI
+            </button>
+          </div>
+        )}
       </div>
 
       <div style={{ marginTop: "1rem" }}>
@@ -224,13 +397,18 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
           style={{
             border: "1px solid #2b2b2b",
             background: "#0b0b0b",
-            cursor: readyToSnap ? "crosshair" : "not-allowed",
+            cursor: readyToSnap ? "crosshair" : activePoiId ? "default" : "not-allowed",
           }}
         >
           <SimpleRouteMap
             routeGroupId={routeGroupId}
             variant={previewVariant}
+            pois={pois}
+            activePoiId={activePoiId}
+            allowPoiDrag={canDragPois}
             onMapClick={handleMapClick}
+            onPoiSelect={handlePoiSelect}
+            onPoiDragEnd={handlePoiDragEnd}
           />
         </div>
       </div>
@@ -269,7 +447,7 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
                   })
                   .join(", ");
                 return (
-                  <tr key={poi.id}>
+                  <tr key={poi.id} style={{ background: poi.id === activePoiId ? "#162033" : "transparent" }}>
                     <td>{poi.id}</td>
                     <td>{poi.type}</td>
                     <td>{poi.title}</td>
