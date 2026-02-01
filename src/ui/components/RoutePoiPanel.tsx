@@ -227,7 +227,11 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
             cursor: readyToSnap ? "crosshair" : "not-allowed",
           }}
         >
-          <SimpleRouteMap routeGroupId={routeGroupId} />
+          <SimpleRouteMap
+            routeGroupId={routeGroupId}
+            variant={previewVariant}
+            onMapClick={handleMapClick}
+          />
         </div>
       </div>
 

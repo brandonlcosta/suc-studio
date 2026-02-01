@@ -618,13 +618,44 @@ export default function RouteManager() {
         notes,
       });
 
+      const uploadCandidates = routes.filter((route) => route.gpxContent?.trim());
+      const uniqueByLabel = new Map<RouteLabel, StagedRoute>();
+      for (const route of uploadCandidates) {
+        uniqueByLabel.set(route.label, route);
+      }
+
+      if (uniqueByLabel.size > 0) {
+        const uploadErrors: string[] = [];
+        for (const [label, route] of uniqueByLabel.entries()) {
+          try {
+            const fileName = `${groupId}-${label}.gpx`;
+            const file = new File([route.gpxContent], fileName, {
+              type: "application/gpx+xml",
+            });
+            await importGPX(file);
+          } catch (err) {
+            const message =
+              err instanceof Error ? err.message : "Failed to upload GPX";
+            uploadErrors.push(`${label}: ${message}`);
+          }
+        }
+
+        if (uploadErrors.length > 0) {
+          setError(`Failed to upload GPX variants:\n${uploadErrors.join("\n")}`);
+        }
+      }
+
       setSuccess(`Route group ${groupId} saved successfully!`);
       setExistingGroups((prev) => {
+        const uploadedLabels = Array.from(uniqueByLabel.keys());
+        const mergedVariants = Array.from(
+          new Set([...(activeRouteGroup?.variants ?? []), ...uploadedLabels])
+        );
         const nextGroup: RouteGroupSummary = {
           routeGroupId: groupId,
           name: routeName,
           location,
-          variants: activeRouteGroup?.variants ?? [],
+          variants: mergedVariants,
         };
         const idx = prev.findIndex((group) => group.routeGroupId === groupId);
         if (idx >= 0) {

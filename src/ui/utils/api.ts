@@ -36,7 +36,7 @@ async function handleError(response: Response, context: string): Promise<never> 
 }
 
 /**
- * Upload GPX file for parsing (does NOT save to disk).
+ * Upload GPX file for parsing (server may persist if filename is canonical).
  */
 export async function importGPX(file: File): Promise<ParsedRoute> {
   const formData = new FormData();

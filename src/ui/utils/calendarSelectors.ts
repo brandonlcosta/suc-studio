@@ -1,14 +1,20 @@
-import * as sharedCalendar from "../../../../suc-shared-data/src/selectors/calendar.mjs";
+import calendarData from "../../data/calendar.json";
+import type { TierVariant, Workout } from "../types";
 
-export type CalendarSelectors = {
-  resolveActiveSeason: (date: Date) => unknown | null;
-  resolveWeekForDate: (season: unknown, date: Date) => { week: unknown; index: number } | null;
-  resolveWorkoutOfDay: (date: Date) => unknown | null;
+export type CalendarDay = {
+  block: { blockId: string; name: string; intent: string } | null;
+  week: { weekId: string; index: number; startDate: string } | null;
+  workout: Workout | null;
+  tiers: Record<string, TierVariant> | null;
+  tierSources: Record<string, string> | null;
 };
 
-export const DEFAULT_TIME_ZONE = sharedCalendar.DEFAULT_TIME_ZONE as string;
+export type CalendarIndex = {
+  timeZone: string;
+  days: Record<string, CalendarDay>;
+};
 
-export const createCalendarSelectors = sharedCalendar.createCalendarSelectors as (
-  data: unknown,
-  options?: { timeZone?: string; validate?: boolean }
-) => CalendarSelectors;
+const calendarIndex = calendarData as CalendarIndex;
+
+export const DEFAULT_TIME_ZONE = calendarIndex.timeZone;
+export const calendarByDate = calendarIndex.days;

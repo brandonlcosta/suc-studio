@@ -2,41 +2,21 @@ import { useEffect, useMemo, useState } from "react";
 import WorkoutChart from "./WorkoutBuilder/WorkoutChart";
 import { effortBlocks } from "./WorkoutBuilder/effortBlocks";
 import type { TierLabel, WorkoutBlockInstance, WorkoutBuilderWorkout } from "./WorkoutBuilder/builderTypes";
-import type { IntervalSegment, IntervalTarget, TierVariant, Workout, WorkoutsMaster } from "../types";
-import { createCalendarSelectors, DEFAULT_TIME_ZONE, type CalendarSelectors } from "../utils/calendarSelectors";
+import type { IntervalSegment, IntervalTarget, TierVariant, Workout } from "../types";
+import { calendarByDate, DEFAULT_TIME_ZONE, type CalendarDay } from "../utils/calendarSelectors";
 
 type ViewerTier = "MED" | "LRG" | "XL";
-type DayKey = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
-
-type CalendarSeason = {
-  seasonId: string;
-  name: string;
-  startDate: string;
-  endDate: string;
-  timezone: string;
-  weekIds: string[];
-};
 
 type CalendarBlock = {
   blockId: string;
   name: string;
   intent: string;
-  weekIds: string[];
 };
 
 type CalendarWeek = {
   weekId: string;
-  seasonId: string;
-  blockId: string;
+  index: number;
   startDate: string;
-  workouts: Record<DayKey, string | null>;
-};
-
-type CalendarData = {
-  seasons: CalendarSeason[];
-  blocks: CalendarBlock[];
-  weeks: CalendarWeek[];
-  workouts: Workout[];
 };
 
 type ResolvedWorkoutOfDay = {
@@ -259,72 +239,11 @@ function formatTargetDetail(target?: IntervalTarget | null): string {
   return entries.join(" - ");
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to load ${url} (${response.status})`);
-  }
-  return (await response.json()) as T;
-}
-
 export default function WorkoutViewer() {
-  const [calendarData, setCalendarData] = useState<CalendarData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectors, setSelectors] = useState<CalendarSelectors | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [activeTab, setActiveTab] = useState<"today" | "upcoming">("today");
   const [selectedTier, setSelectedTier] = useState<ViewerTier>("MED");
   const [pinnedDate, setPinnedDate] = useState<Date | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [seasons, blocks, weeks, workoutsMaster] = await Promise.all([
-          fetchJson<CalendarSeason[]>("/api/seasons"),
-          fetchJson<CalendarBlock[]>("/api/blocks"),
-          fetchJson<CalendarWeek[]>("/api/weeks"),
-          fetchJson<WorkoutsMaster>("/api/workouts"),
-        ]);
-        if (!mounted) return;
-        setCalendarData({
-          seasons: Array.isArray(seasons) ? seasons : [],
-          blocks: Array.isArray(blocks) ? blocks : [],
-          weeks: Array.isArray(weeks) ? weeks : [],
-          workouts: Array.isArray(workoutsMaster.workouts) ? workoutsMaster.workouts : [],
-        });
-      } catch (err) {
-        if (!mounted) return;
-        const message = err instanceof Error ? err.message : "Failed to load calendar data.";
-        setError(message);
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    load();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!calendarData) return;
-    try {
-      const nextSelectors = createCalendarSelectors(calendarData, { validate: true });
-      setSelectors(nextSelectors);
-      setError(null);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Calendar validation failed.";
-      setSelectors(null);
-      setError(message);
-    }
-  }, [calendarData]);
 
   useEffect(() => {
     let timeoutId: number | null = null;
@@ -353,36 +272,40 @@ export default function WorkoutViewer() {
     };
   }, []);
 
-  const blockById = useMemo(() => {
-    if (!calendarData) return new Map<string, CalendarBlock>();
-    return new Map(calendarData.blocks.map((block) => [block.blockId, block]));
-  }, [calendarData]);
+  const hasCalendarData = Object.keys(calendarByDate).length > 0;
 
-  const todayResult = useMemo(() => {
-    if (!selectors) return null;
-    return selectors.resolveWorkoutOfDay(new Date()) as ResolvedWorkoutOfDay | null;
-  }, [selectors, now]);
+  const resolveCalendarDay = (date: Date): CalendarDay | null => {
+    const key = getPacificDateKey(date);
+    return calendarByDate[key] ?? null;
+  };
+
+  const toResolvedWorkout = (entry: CalendarDay | null): ResolvedWorkoutOfDay | null => {
+    if (!entry?.workout || !entry.tiers || !entry.tierSources || !entry.block || !entry.week) {
+      return null;
+    }
+    return {
+      workout: entry.workout,
+      tiers: entry.tiers as Record<ViewerTier, TierVariant>,
+      tierSources: entry.tierSources as Record<ViewerTier, ViewerTier>,
+      block: entry.block,
+      week: entry.week,
+    };
+  };
 
   const activeDate = pinnedDate ?? now;
+  const activeEntry = useMemo(() => resolveCalendarDay(activeDate), [activeDate]);
   const resolvedResult = useMemo(() => {
-    if (!selectors) return null;
-    if (!pinnedDate) return todayResult;
-    return selectors.resolveWorkoutOfDay(pinnedDate) as ResolvedWorkoutOfDay | null;
-  }, [selectors, pinnedDate, todayResult]);
+    return toResolvedWorkout(activeEntry);
+  }, [activeEntry]);
 
   const weekContext: WeekContext | null = useMemo(() => {
-    if (!selectors || !calendarData) return null;
-    const season = selectors.resolveActiveSeason(activeDate) as CalendarSeason | null;
-    if (!season) return null;
-    const resolvedWeek = selectors.resolveWeekForDate(season, activeDate) as { week: CalendarWeek; index: number } | null;
-    if (!resolvedWeek) return null;
-    const block = blockById.get(resolvedWeek.week.blockId) ?? null;
+    if (!activeEntry?.week) return null;
     return {
-      block,
-      week: resolvedWeek.week,
-      index: resolvedWeek.index,
+      block: activeEntry.block ?? null,
+      week: activeEntry.week,
+      index: activeEntry.week.index,
     };
-  }, [selectors, calendarData, activeDate, blockById]);
+  }, [activeEntry]);
 
   const chartDraft = useMemo(() => {
     if (!resolvedResult) return null;
@@ -395,7 +318,6 @@ export default function WorkoutViewer() {
   const isViewingToday = getPacificDateKey(activeDate) === getPacificDateKey(now);
 
   const upcomingItems = useMemo(() => {
-    if (!selectors || !calendarData) return [];
     const base = toNoon(now);
     const items: Array<{
       date: Date;
@@ -406,7 +328,8 @@ export default function WorkoutViewer() {
 
     for (let offset = 1; offset <= 7; offset += 1) {
       const date = addDays(base, offset);
-      const result = selectors.resolveWorkoutOfDay(date) as ResolvedWorkoutOfDay | null;
+      const entry = resolveCalendarDay(date);
+      const result = toResolvedWorkout(entry);
       if (result) {
         items.push({
           date,
@@ -417,44 +340,23 @@ export default function WorkoutViewer() {
         continue;
       }
 
-      const season = selectors.resolveActiveSeason(date) as CalendarSeason | null;
-      const resolvedWeek = season
-        ? (selectors.resolveWeekForDate(season, date) as { week: CalendarWeek; index: number } | null)
-        : null;
-      const block = resolvedWeek ? blockById.get(resolvedWeek.week.blockId) : null;
       items.push({
         date,
         workoutName: "Rest Day",
-        blockName: block?.name ?? "Recovery",
+        blockName: entry?.block?.name ?? "Recovery",
         isRest: true,
       });
     }
 
     return items;
-  }, [selectors, calendarData, now, blockById]);
+  }, [now]);
 
   const tierFallbackNote =
     resolvedResult && tierSource !== selectedTier
       ? `Showing ${tierSource} variant for ${selectedTier}`
       : null;
 
-  if (loading) {
-    return (
-      <main style={containerStyle}>
-        <div style={cardStyle}>Loading workout...</div>
-      </main>
-    );
-  }
-
-  if (error) {
-    return (
-      <main style={containerStyle}>
-        <div style={{ ...cardStyle, borderColor: "#ff5a5a", color: "#ffb3b3" }}>{error}</div>
-      </main>
-    );
-  }
-
-  if (!selectors) {
+  if (!hasCalendarData) {
     return (
       <main style={containerStyle}>
         <div style={cardStyle}>Calendar data is unavailable.</div>
