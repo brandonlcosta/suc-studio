@@ -1,0 +1,125 @@
+﻿{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SUC Season Builder Schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["seasonId", "status", "blocks", "seasonMarkers"],
+  "properties": {
+    "seasonId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "published"]
+    },
+    "blocks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/blockInstance"
+      }
+    },
+    "seasonMarkers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/seasonMarker"
+      }
+    }
+  },
+  "$defs": {
+    "intensityLabel": {
+      "type": "string",
+      "enum": ["low", "low-med", "med", "med-high", "high", "very-high"]
+    },
+    "weekFocus": {
+      "type": ["string", "null"],
+      "enum": [
+        "base",
+        "deload",
+        "speed",
+        "hill-power",
+        "mileage",
+        "ultra",
+        "heat",
+        "taper",
+        null
+      ]
+    },
+    "weekInstance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["weekId", "focus", "stress", "volume", "intensity"],
+      "properties": {
+        "weekId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "focus": {
+          "$ref": "#/$defs/weekFocus"
+        },
+        "stress": {
+          "$ref": "#/$defs/intensityLabel"
+        },
+        "volume": {
+          "$ref": "#/$defs/intensityLabel"
+        },
+        "intensity": {
+          "$ref": "#/$defs/intensityLabel"
+        }
+      }
+    },
+    "blockInstance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blockId", "name", "tags", "weeks"],
+      "properties": {
+        "blockId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "weeks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/weekInstance"
+          }
+        },
+        "raceAnchorId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "seasonMarker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["markerId", "label", "weekIndex"],
+      "properties": {
+        "markerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "weekIndex": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

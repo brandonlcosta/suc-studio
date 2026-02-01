@@ -58,7 +58,7 @@ export interface EventsSelection {
 // Workout types
 export type WorkoutStatus = "draft" | "published" | "archived";
 export type TargetType = "pace" | "hr" | "power";
-export type TierLabel = "MED" | "LRG" | "XL";
+export type TierLabel = "MED" | "LRG" | "XL" | "XXL";
 
 export interface IntervalTarget {
   type: TargetType;

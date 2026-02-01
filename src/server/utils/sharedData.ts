@@ -5,9 +5,12 @@ import {
   EVENTS_MASTER_PATH,
   EVENTS_SELECTION_PATH,
   WORKOUTS_MASTER_PATH,
+  WORKOUT_DRAFT_PATH,
+  WORKOUT_PUBLISHED_PATH,
 } from "./paths.js";
 import type {
   RouteMeta,
+  RoutePoisDoc,
   EventsMaster,
   EventsSelection,
   WorkoutsMaster,
@@ -35,6 +38,10 @@ function readJsonFile<T>(filePath: string): T {
  * Write JSON file atomically to suc-shared-data.
  */
 function writeJsonFile(filePath: string, data: unknown): void {
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
   const tmpPath = `${filePath}.tmp`;
   fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf8");
   fs.renameSync(tmpPath, filePath);
@@ -116,6 +123,161 @@ export function saveRouteGroup(
   }
 }
 
+function normalizeVariantLabel(label: string): string {
+  return String(label).toUpperCase();
+}
+
+/**
+ * Save a single GPX variant and ensure route.meta.json includes the label.
+ */
+export function saveRouteVariant(
+  groupId: string,
+  label: string,
+  gpxContent: string
+): RouteMeta {
+  const groupDir = path.join(ROUTES_ROOT, groupId);
+  if (!fs.existsSync(groupDir)) {
+    fs.mkdirSync(groupDir, { recursive: true });
+  }
+
+  const normalizedLabel = normalizeVariantLabel(label);
+  const gpxPath = path.join(groupDir, `${normalizedLabel}.gpx`);
+  fs.writeFileSync(gpxPath, gpxContent, "utf8");
+
+  const metaPath = path.join(groupDir, "route.meta.json");
+  let meta: RouteMeta;
+  if (fs.existsSync(metaPath)) {
+    meta = readJsonFile<RouteMeta>(metaPath);
+  } else {
+    meta = {
+      routeGroupId: groupId,
+      name: groupId,
+      location: "Unknown",
+      source: "SUC",
+      notes: "",
+      variants: [],
+    };
+  }
+
+  const variants = new Set((meta.variants ?? []).map(normalizeVariantLabel));
+  variants.add(normalizedLabel);
+  meta.variants = Array.from(variants);
+
+  writeJsonFile(metaPath, meta);
+  return meta;
+}
+
+/**
+ * Delete an entire route group directory.
+ */
+export function deleteRouteGroup(groupId: string): void {
+  const groupDir = path.join(ROUTES_ROOT, groupId);
+  if (!fs.existsSync(groupDir)) {
+    throw new Error(`Route group not found: ${groupId}`);
+  }
+  fs.rmSync(groupDir, { recursive: true, force: true });
+}
+
+/**
+ * Delete a GPX variant and remove it from route.meta.json.
+ */
+export function deleteRouteVariant(groupId: string, label: string): RouteMeta {
+  const groupDir = path.join(ROUTES_ROOT, groupId);
+  if (!fs.existsSync(groupDir)) {
+    throw new Error(`Route group not found: ${groupId}`);
+  }
+
+  const metaPath = path.join(groupDir, "route.meta.json");
+  if (!fs.existsSync(metaPath)) {
+    throw new Error(`Route metadata missing for ${groupId}`);
+  }
+
+  const normalizedLabel = normalizeVariantLabel(label);
+  const candidates = [
+    `${normalizedLabel}.gpx`,
+    `${groupId}-${normalizedLabel}.gpx`,
+    path.join("variants", `${normalizedLabel}.gpx`),
+    path.join("variants", `${groupId}-${normalizedLabel}.gpx`),
+  ];
+
+  for (const name of candidates) {
+    const filePath = path.join(groupDir, name);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  }
+
+  const meta = readJsonFile<RouteMeta>(metaPath);
+  meta.variants = (meta.variants ?? []).filter(
+    (variant) => normalizeVariantLabel(variant) !== normalizedLabel
+  );
+  writeJsonFile(metaPath, meta);
+  return meta;
+}
+
+/**
+ * Read route.pois.json for a route group (if present).
+ */
+export function loadRoutePois(groupId: string): RoutePoisDoc {
+  const poisPath = path.join(ROUTES_ROOT, groupId, "route.pois.json");
+  if (!fs.existsSync(poisPath)) {
+    return { routeGroupId: groupId, pois: [] };
+  }
+
+  try {
+    const parsed = readJsonFile<RoutePoisDoc>(poisPath);
+    if (!parsed || !Array.isArray(parsed.pois)) {
+      return { routeGroupId: groupId, pois: [] };
+    }
+    return {
+      version: parsed.version,
+      routeGroupId: parsed.routeGroupId ?? groupId,
+      pois: parsed.pois,
+    };
+  } catch (error) {
+    console.error(`Failed to read route.pois.json for ${groupId}:`, error);
+    return { routeGroupId: groupId, pois: [] };
+  }
+}
+
+/**
+ * Write route.pois.json for a route group.
+ */
+export function saveRoutePois(groupId: string, data: RoutePoisDoc): void {
+  const poisPath = path.join(ROUTES_ROOT, groupId, "route.pois.json");
+  writeJsonFile(poisPath, {
+    version: data.version,
+    routeGroupId: data.routeGroupId ?? groupId,
+    pois: Array.isArray(data.pois) ? data.pois : [],
+  });
+}
+
+/**
+ * Load GPX content for a route variant (label or routeId filename).
+ */
+export function loadRouteVariantGpx(groupId: string, label: string): string {
+  const baseDir = path.join(ROUTES_ROOT, groupId);
+  const normalized = String(label).toUpperCase();
+  const candidates = [
+    `${normalized}.gpx`,
+    `${groupId}-${normalized}.gpx`,
+    `${label}.gpx`,
+    `${groupId}-${label}.gpx`,
+    path.join("variants", `${normalized}.gpx`),
+    path.join("variants", `${groupId}-${normalized}.gpx`),
+    path.join("variants", `${label}.gpx`),
+    path.join("variants", `${groupId}-${label}.gpx`),
+  ];
+
+  for (const name of candidates) {
+    const filePath = path.join(baseDir, name);
+    if (!fs.existsSync(filePath)) continue;
+    return fs.readFileSync(filePath, "utf8");
+  }
+
+  throw new Error(`GPX not found for ${groupId} ${label} in ${baseDir}`);
+}
+
 /**
  * Read events.master.json
  */
@@ -156,4 +318,64 @@ export function loadWorkoutsMaster(): WorkoutsMaster {
  */
 export function saveWorkoutsMaster(data: WorkoutsMaster): void {
   writeJsonFile(WORKOUTS_MASTER_PATH, data);
+}
+
+/**
+ * Read workout.draft.json (if present)
+ * Deprecated: drafts live in workouts.master.json
+ */
+export function loadWorkoutDraft(): unknown | null {
+  if (!fs.existsSync(WORKOUT_DRAFT_PATH)) {
+    return null;
+  }
+
+  return readJsonFile<unknown>(WORKOUT_DRAFT_PATH);
+}
+
+/**
+ * Write workout.draft.json
+ * Deprecated: drafts live in workouts.master.json
+ */
+export function saveWorkoutDraft(data: unknown): void {
+  writeJsonFile(WORKOUT_DRAFT_PATH, data);
+}
+
+/**
+ * Delete workout.draft.json
+ * Deprecated: drafts live in workouts.master.json
+ */
+export function deleteWorkoutDraft(): void {
+  if (fs.existsSync(WORKOUT_DRAFT_PATH)) {
+    fs.unlinkSync(WORKOUT_DRAFT_PATH);
+  }
+}
+
+/**
+ * Read workout.published.json (if present)
+ * Deprecated: published workouts live in workouts.master.json
+ */
+export function loadWorkoutPublished(): unknown | null {
+  if (!fs.existsSync(WORKOUT_PUBLISHED_PATH)) {
+    return null;
+  }
+
+  return readJsonFile<unknown>(WORKOUT_PUBLISHED_PATH);
+}
+
+/**
+ * Write workout.published.json
+ * Deprecated: published workouts live in workouts.master.json
+ */
+export function saveWorkoutPublished(data: unknown): void {
+  writeJsonFile(WORKOUT_PUBLISHED_PATH, data);
+}
+
+/**
+ * Delete workout.published.json
+ * Deprecated: published workouts live in workouts.master.json
+ */
+export function deleteWorkoutPublished(): void {
+  if (fs.existsSync(WORKOUT_PUBLISHED_PATH)) {
+    fs.unlinkSync(WORKOUT_PUBLISHED_PATH);
+  }
 }

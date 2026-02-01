@@ -53,21 +53,21 @@ export default function DropZone({ onFilesSelected, disabled = false }: DropZone
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       style={{
-        border: `2px dashed ${isDragging ? "#4CAF50" : "#ccc"}`,
+        border: `2px dashed ${isDragging ? "var(--accent-green)" : "var(--border-light)"}`,
         borderRadius: "8px",
         padding: "2rem",
         textAlign: "center",
-        backgroundColor: isDragging ? "#f0f9f0" : "#fafafa",
+        backgroundColor: isDragging ? "#1a2e22" : "var(--overlay-dark)",
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.5 : 1,
-        transition: "all 0.2s ease",
+        transition: "all 0.15s ease",
       }}
     >
       <div style={{ marginBottom: "1rem", fontSize: "2rem" }}>📁</div>
-      <div style={{ marginBottom: "0.5rem", fontWeight: "500" }}>
+      <div style={{ marginBottom: "0.5rem", fontWeight: "500", color: "var(--text-primary)" }}>
         Drop GPX files here
       </div>
-      <div style={{ color: "#666", fontSize: "0.875rem", marginBottom: "1rem" }}>
+      <div style={{ color: "var(--text-secondary)", fontSize: "0.875rem", marginBottom: "1rem" }}>
         or
       </div>
       <label>
@@ -83,11 +83,12 @@ export default function DropZone({ onFilesSelected, disabled = false }: DropZone
           style={{
             display: "inline-block",
             padding: "0.5rem 1rem",
-            backgroundColor: disabled ? "#ccc" : "#111827",
-            color: "white",
+            backgroundColor: disabled ? "var(--border-light)" : "var(--button-bg)",
+            color: "var(--text-primary)",
             borderRadius: "4px",
             cursor: disabled ? "not-allowed" : "pointer",
             fontSize: "0.875rem",
+            border: "1px solid var(--button-border)",
           }}
         >
           Browse Files

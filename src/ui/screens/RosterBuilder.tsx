@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { RosterMember } from "../types/studio";
-import { loadJson, saveJson, exportJson } from "../utils/storage";
+import { exportJson } from "../utils/storage";
 import { assertRoster } from "../utils/studioValidation";
+import { parseRosterCsv } from "../../utils/parseRosterCsv";
 
 const ROSTER_FILE = "roster.json";
+const ROSTER_API = "/api/roster";
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -22,7 +24,12 @@ export default function RosterBuilder() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const rosterData = await loadJson<RosterMember[]>(ROSTER_FILE, assertRoster);
+        const response = await fetch(ROSTER_API);
+        if (!response.ok) {
+          throw new Error(`Failed to load roster: ${response.status}`);
+        }
+        const rosterData = (await response.json()) as unknown;
+        assertRoster(rosterData);
         setRoster(rosterData);
         setSelectedId(rosterData[0]?.id ?? null);
         setDraft(rosterData[0] ?? null);
@@ -75,13 +82,23 @@ export default function RosterBuilder() {
       return;
     }
 
-    const nextRoster = roster.map((member) =>
-      member.id === selectedId ? draft : member
-    );
+    const existingIndex = roster.findIndex((member) => member.id === draft.id);
+    const nextRoster =
+      existingIndex >= 0
+        ? roster.map((member) => (member.id === draft.id ? draft : member))
+        : [...roster, draft];
 
     setIsSaving(true);
     try {
-      await saveJson(ROSTER_FILE, nextRoster, assertRoster);
+      assertRoster(nextRoster);
+      const response = await fetch(ROSTER_API, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(nextRoster, null, 2),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to save roster: ${response.status}`);
+      }
       setRoster(nextRoster);
       setSelectedId(draft.id);
       setMessage("Roster saved.");
@@ -94,11 +111,91 @@ export default function RosterBuilder() {
     }
   };
 
+  const handleCreate = () => {
+    setSelectedId(null);
+    setDraft({
+      id: "",
+      name: "",
+      email: "",
+      status: "active",
+      tier: "MED",
+      joinedDate: "",
+      trainingGoal: "",
+      weeklyMileageRange: "",
+      consent: {
+        publicName: false,
+        publicStory: false,
+        publicPhotos: false,
+        publicMetrics: false,
+      },
+    });
+    setDirty(true);
+    setMessage(null);
+    setError(null);
+  };
+
+  const handleCsvDrop = async (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setError(null);
+    setMessage(null);
+
+    // TODO(shared-import): Extract file validation + text loading for reuse across CSV importers.
+    const file = event.dataTransfer.files?.[0];
+    if (!file) {
+      setError("No file dropped.");
+      return;
+    }
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setError("Only .csv files are supported.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const text = await file.text();
+      // TODO(shared-import): Extract CSV parsing per domain (roster/routes/events/workouts).
+      const incomingRoster = parseRosterCsv(text);
+      // TODO(shared-import): Extract merge-by-id utility for CSV imports with conflict resolution.
+      const mergedRosterMap = new Map<string, RosterMember>();
+
+      roster.forEach((member) => {
+        mergedRosterMap.set(member.id, member);
+      });
+      incomingRoster.forEach((member) => {
+        mergedRosterMap.set(member.id, member);
+      });
+
+      const mergedRoster = Array.from(mergedRosterMap.values());
+      // TODO(shared-import): Extract validate + persist step shared by CSV importers.
+      assertRoster(mergedRoster);
+      const response = await fetch(ROSTER_API, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(mergedRoster, null, 2),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to save roster: ${response.status}`);
+      }
+
+      setRoster(mergedRoster);
+      const nextSelected = selectedId && mergedRosterMap.has(selectedId) ? selectedId : mergedRoster[0]?.id ?? null;
+      setSelectedId(nextSelected);
+      setDraft(nextSelected ? { ...mergedRosterMap.get(nextSelected)! } : null);
+      setDirty(false);
+      setMessage(`Imported ${incomingRoster.length} CSV record${incomingRoster.length === 1 ? "" : "s"}.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      setError(`Failed to import CSV: ${msg}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
-    <div style={{ padding: "2rem", display: "flex", gap: "2rem" }}>
+    <div style={{ padding: "2rem", display: "flex", gap: "2rem", backgroundColor: "#0a0e14", minHeight: "100%" }}>
       <aside style={{ width: "320px" }}>
         <div style={{ marginBottom: "1rem" }}>
-          <h2 style={{ marginBottom: "0.5rem" }}>Roster</h2>
+          <h2 style={{ marginBottom: "0.5rem", color: "#f5f5f5" }}>Roster</h2>
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
@@ -107,9 +204,28 @@ export default function RosterBuilder() {
               width: "100%",
               padding: "0.5rem",
               borderRadius: "4px",
-              border: "1px solid #d1d5db",
+              border: "1px solid #2b2b2b",
+              backgroundColor: "#0b0b0b",
+              color: "#f5f5f5",
             }}
           />
+        </div>
+
+        <div style={{ marginBottom: "1rem" }}>
+          <button
+            onClick={handleCreate}
+            style={{
+              width: "100%",
+              padding: "0.5rem",
+              borderRadius: "4px",
+              border: "1px solid #111827",
+              backgroundColor: "#111827",
+              color: "white",
+              cursor: "pointer",
+            }}
+          >
+            Add Member
+          </button>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -123,13 +239,13 @@ export default function RosterBuilder() {
                   textAlign: "left",
                   padding: "0.75rem",
                   borderRadius: "6px",
-                  border: isActive ? "2px solid #111827" : "1px solid #e5e7eb",
-                  backgroundColor: isActive ? "#f3f4f6" : "white",
+                  border: isActive ? "2px solid #2563eb" : "1px solid #2a2a2a",
+                  backgroundColor: isActive ? "#1a2332" : "#1a1a1a",
                   cursor: "pointer",
                 }}
               >
-                <div style={{ fontWeight: 600 }}>{member.name}</div>
-                <div style={{ fontSize: "0.8rem", color: "#6b7280" }}>{member.tier}</div>
+                <div style={{ fontWeight: 600, color: "#f5f5f5" }}>{member.name}</div>
+                <div style={{ fontSize: "0.8rem", color: "#999999" }}>{member.tier}</div>
                 <span
                   style={{
                     display: "inline-block",
@@ -139,10 +255,16 @@ export default function RosterBuilder() {
                     fontSize: "0.7rem",
                     backgroundColor:
                       member.status === "active"
-                        ? "#dcfce7"
+                        ? "#1a2e22"
                         : member.status === "paused"
-                        ? "#fef9c3"
-                        : "#e5e7eb",
+                        ? "#3a3a1a"
+                        : "#2a2a2a",
+                    color:
+                      member.status === "active"
+                        ? "#4ade80"
+                        : member.status === "paused"
+                        ? "#fbbf24"
+                        : "#999999",
                   }}
                 >
                   {member.status}
@@ -152,6 +274,25 @@ export default function RosterBuilder() {
           })}
         </div>
 
+        <div
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={handleCsvDrop}
+          style={{
+            marginTop: "1.5rem",
+            padding: "1rem",
+            borderRadius: "6px",
+            border: "1px dashed #3a3a3a",
+            backgroundColor: "#0f0f0f",
+            color: "#b3b3b3",
+            textAlign: "center",
+          }}
+        >
+          Drop CSV to import
+        </div>
+        <div style={{ marginTop: "0.5rem", color: "#999999", fontSize: "0.75rem", textAlign: "center" }}>
+          CSV is the source of truth
+        </div>
+
         <div style={{ marginTop: "1.5rem" }}>
           <button
             onClick={() => exportJson(ROSTER_FILE, roster)}
@@ -159,8 +300,9 @@ export default function RosterBuilder() {
               width: "100%",
               padding: "0.5rem",
               borderRadius: "4px",
-              border: "1px solid #d1d5db",
-              backgroundColor: "#f9fafb",
+              border: "1px solid #3a3a3a",
+              backgroundColor: "#1a1a1a",
+              color: "#f5f5f5",
               cursor: "pointer",
             }}
           >
@@ -178,9 +320,9 @@ export default function RosterBuilder() {
             marginBottom: "1rem",
           }}
         >
-          <h2 style={{ margin: 0 }}>Profile</h2>
+          <h2 style={{ margin: 0, color: "#f5f5f5" }}>Profile</h2>
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            {dirty && <span style={{ color: "#dc2626" }}>Unsaved</span>}
+            {dirty && <span style={{ color: "#ff9999" }}>Unsaved</span>}
             <button
               onClick={handleSave}
               disabled={isSaving || !draft}
@@ -203,10 +345,10 @@ export default function RosterBuilder() {
             style={{
               marginBottom: "1rem",
               padding: "0.75rem",
-              backgroundColor: "#ecfdf3",
-              border: "1px solid #bbf7d0",
+              backgroundColor: "#1a2e22",
+              border: "1px solid #16a34a",
               borderRadius: "4px",
-              color: "#166534",
+              color: "#4ade80",
             }}
           >
             {message}
@@ -217,10 +359,10 @@ export default function RosterBuilder() {
             style={{
               marginBottom: "1rem",
               padding: "0.75rem",
-              backgroundColor: "#fee2e2",
-              border: "1px solid #fecaca",
+              backgroundColor: "#2a1a1a",
+              border: "1px solid #ff5a5a",
               borderRadius: "4px",
-              color: "#991b1b",
+              color: "#ff9999",
             }}
           >
             {error}
@@ -230,8 +372,8 @@ export default function RosterBuilder() {
         {draft ? (
           <div
             style={{
-              backgroundColor: "white",
-              border: "1px solid #e5e7eb",
+              backgroundColor: "#1a1a1a",
+              border: "1px solid #2a2a2a",
               borderRadius: "8px",
               padding: "1.5rem",
               display: "grid",
@@ -239,7 +381,7 @@ export default function RosterBuilder() {
             }}
           >
             <div>
-              <label style={{ fontSize: "0.75rem", color: "#6b7280" }}>Name</label>
+              <label style={{ fontSize: "0.75rem", color: "#999999" }}>Name</label>
               <input
                 value={draft.name}
                 onChange={(event) => updateDraft({ name: event.target.value })}
@@ -247,12 +389,14 @@ export default function RosterBuilder() {
                   width: "100%",
                   padding: "0.5rem",
                   borderRadius: "4px",
-                  border: "1px solid #d1d5db",
+                  border: "1px solid #2b2b2b",
+                  backgroundColor: "#0b0b0b",
+                  color: "#f5f5f5",
                 }}
               />
             </div>
             <div>
-              <label style={{ fontSize: "0.75rem", color: "#6b7280" }}>Email</label>
+              <label style={{ fontSize: "0.75rem", color: "#999999" }}>Email</label>
               <input
                 value={draft.email}
                 onChange={(event) => updateDraft({ email: event.target.value })}
@@ -260,13 +404,31 @@ export default function RosterBuilder() {
                   width: "100%",
                   padding: "0.5rem",
                   borderRadius: "4px",
-                  border: "1px solid #d1d5db",
+                  border: "1px solid #2b2b2b",
+                  backgroundColor: "#0b0b0b",
+                  color: "#f5f5f5",
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: "0.75rem", color: "#999999" }}>Joined Date</label>
+              <input
+                value={draft.joinedDate}
+                onChange={(event) => updateDraft({ joinedDate: event.target.value })}
+                placeholder="YYYY-MM-DD"
+                style={{
+                  width: "100%",
+                  padding: "0.5rem",
+                  borderRadius: "4px",
+                  border: "1px solid #2b2b2b",
+                  backgroundColor: "#0b0b0b",
+                  color: "#f5f5f5",
                 }}
               />
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
               <div>
-                <label style={{ fontSize: "0.75rem", color: "#6b7280" }}>Status</label>
+                <label style={{ fontSize: "0.75rem", color: "#999999" }}>Status</label>
                 <select
                   value={draft.status}
                   onChange={(event) =>
@@ -285,7 +447,7 @@ export default function RosterBuilder() {
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: "0.75rem", color: "#6b7280" }}>Tier</label>
+                <label style={{ fontSize: "0.75rem", color: "#999999" }}>Tier</label>
                 <select
                   value={draft.tier}
                   onChange={(event) =>
@@ -306,7 +468,7 @@ export default function RosterBuilder() {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
               <div>
-                <label style={{ fontSize: "0.75rem", color: "#6b7280" }}>Training Goal</label>
+                <label style={{ fontSize: "0.75rem", color: "#999999" }}>Training Goal</label>
                 <input
                   value={draft.trainingGoal ?? ""}
                   onChange={(event) => updateDraft({ trainingGoal: event.target.value })}
@@ -319,7 +481,7 @@ export default function RosterBuilder() {
                 />
               </div>
               <div>
-                <label style={{ fontSize: "0.75rem", color: "#6b7280" }}>
+                <label style={{ fontSize: "0.75rem", color: "#999999" }}>
                   Weekly Mileage Range
                 </label>
                 <input
@@ -336,7 +498,7 @@ export default function RosterBuilder() {
             </div>
 
             <div>
-              <div style={{ fontWeight: 600, marginBottom: "0.5rem" }}>Consent</div>
+              <div style={{ fontWeight: 600, marginBottom: "0.5rem", color: "#f5f5f5" }}>Consent</div>
               {(
                 [
                   ["publicName", "Use name publicly"],
@@ -352,6 +514,7 @@ export default function RosterBuilder() {
                     alignItems: "center",
                     gap: "0.5rem",
                     marginBottom: "0.5rem",
+                    color: "#f5f5f5",
                   }}
                 >
                   <input
@@ -369,7 +532,7 @@ export default function RosterBuilder() {
             </div>
           </div>
         ) : (
-          <div>Select a roster member to edit.</div>
+          <div style={{ color: "#999999" }}>Select a roster member to edit.</div>
         )}
       </section>
     </div>

@@ -1,11 +1,14 @@
 ﻿import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
+import { BrowserRouter, Routes, Route, NavLink, useLocation } from "react-router-dom";
 import StudioHome from "../studio/StudioHome";
-import SeasonBuilder from "../studio/SeasonBuilder";
+import SeasonBuilder from "./screens/SeasonBuilder";
 import WorkoutBuilder from "./screens/WorkoutBuilder";
 import RouteManager from "./screens/RouteManager";
 import EventBuilder from "./screens/EventBuilder";
+import RosterBuilder from "./screens/RosterBuilder";
+import ChallengeBuilder from "./screens/ChallengeBuilder";
+import WorkoutViewer from "./screens/WorkoutViewer";
 
 // Global styles
 const globalStyles = `
@@ -13,6 +16,12 @@ const globalStyles = `
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+  }
+
+  html, body, #root {
+    background-color: #0a0e14;
+    color: #f5f5f5;
+    height: 100%;
   }
 
   body {
@@ -38,7 +47,7 @@ document.head.appendChild(styleElement);
 function StudioNav() {
   const linkStyle = ({ isActive }: { isActive: boolean }) => ({
     padding: "0.5rem 0.75rem",
-    color: isActive ? "#111827" : "#4b5563",
+    color: isActive ? "#f5f5f5" : "#999999",
     textDecoration: "none",
     fontWeight: isActive ? 600 : 400,
   });
@@ -49,8 +58,8 @@ function StudioNav() {
         display: "flex",
         gap: "0.5rem",
         padding: "0.75rem 1rem",
-        borderBottom: "1px solid #e5e7eb",
-        background: "#f9fafb",
+        borderBottom: "1px solid #2a2a2a",
+        background: "#0f1115",
       }}
     >
       <NavLink to="/" style={linkStyle}>
@@ -66,7 +75,13 @@ function StudioNav() {
         Events
       </NavLink>
       <NavLink to="/studio/seasons" style={linkStyle}>
-        Seasons
+        Blocks
+      </NavLink>
+      <NavLink to="/studio/roster" style={linkStyle}>
+        Roster
+      </NavLink>
+      <NavLink to="/studio/challenges" style={linkStyle}>
+        Challenges
       </NavLink>
     </nav>
   );
@@ -76,14 +91,30 @@ function StudioNav() {
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter>
-      <StudioNav />
-      <Routes>
-        <Route path="/" element={<StudioHome />} />
-        <Route path="/studio/workouts" element={<WorkoutBuilder />} />
-        <Route path="/studio/routes" element={<RouteManager />} />
-        <Route path="/studio/events" element={<EventBuilder />} />
-        <Route path="/studio/seasons" element={<SeasonBuilder />} />
-      </Routes>
+      <AppShell />
     </BrowserRouter>
   </React.StrictMode>
 );
+
+function AppShell() {
+  const location = useLocation();
+  const showNav = !location.pathname.startsWith("/viewer");
+
+  return (
+    <>
+      {showNav && <StudioNav />}
+      <Routes>
+        <Route path="/" element={<StudioHome />} />
+        <Route path="/viewer" element={<WorkoutViewer />} />
+        <Route path="/studio/workouts" element={<WorkoutBuilder />} />
+        <Route path="/workouts/:id" element={<WorkoutBuilder />} />
+        <Route path="/studio/routes" element={<RouteManager />} />
+        <Route path="/studio/events" element={<EventBuilder />} />
+        <Route path="/studio/seasons" element={<SeasonBuilder />} />
+        <Route path="/seasons" element={<SeasonBuilder />} />
+        <Route path="/studio/roster" element={<RosterBuilder />} />
+        <Route path="/studio/challenges" element={<ChallengeBuilder />} />
+      </Routes>
+    </>
+  );
+}

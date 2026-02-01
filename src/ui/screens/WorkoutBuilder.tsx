@@ -1,1451 +1,907 @@
-import { useState, useEffect, useCallback } from "react";
-import type { Workout, WorkoutsMaster, WorkoutStatus, TierLabel, IntervalSegment, TierVariant, TargetType } from "../types";
-import { loadWorkoutsMaster, saveWorkoutsMaster } from "../utils/api";
+import { useEffect, useMemo, useState } from "react";
+import ActionBar from "./WorkoutBuilder/ActionBar";
+import BlockLibrarySidebar from "./WorkoutBuilder/BlockLibrarySidebar";
+import SummarySidebar from "./WorkoutBuilder/SummarySidebar";
+import WorkoutMetadata from "./WorkoutBuilder/WorkoutMetadata";
+import WorkoutChart from "./WorkoutBuilder/WorkoutChart";
+import TierColumns from "./WorkoutBuilder/TierColumns";
+import { effortBlocks } from "./WorkoutBuilder/effortBlocks";
+import type { EffortBlockDefinition } from "./WorkoutBuilder/effortBlocks";
+import type {
+  EffortBlockDragPayload,
+  TierLabel,
+  WorkoutBlockInstance,
+  WorkoutBuilderWorkout,
+} from "./WorkoutBuilder/builderTypes";
+import { generateWorkoutNameByTier } from "./WorkoutBuilder/workoutName";
+import type { IntervalSegment, IntervalTarget, TierVariant, Workout, WorkoutsMaster } from "../types";
 
-export default function WorkoutBuilder() {
-  const [workouts, setWorkouts] = useState<Workout[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+type ViewMode = "builder" | "preview" | "library";
 
-  // List view state
-  const [statusFilter, setStatusFilter] = useState<WorkoutStatus | "all">("all");
-  const [searchQuery, setSearchQuery] = useState("");
+type WorkoutGroup = {
+  workoutId: string;
+  draft?: Workout;
+  published: Workout[];
+  archived: Workout[];
+};
 
-  // Editor state
-  const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
-  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+const emptyTierBlocks: Record<TierLabel, WorkoutBlockInstance[]> = {
+  MED: [],
+  LRG: [],
+  XL: [],
+  XXL: [],
+};
 
-  // Load workouts on mount
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const workoutsMaster = await loadWorkoutsMaster();
-        setWorkouts(workoutsMaster.workouts || []);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Unknown error";
-        setError(`Failed to load workouts: ${message}`);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+const createWorkoutId = () => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `workout-${crypto.randomUUID()}`;
+  }
+  return `workout-${Date.now()}-${Math.random()}`;
+};
 
-    loadData();
-  }, []);
+const createDraftWorkout = (): Workout => {
+  const now = new Date().toISOString();
+  return {
+    workoutId: createWorkoutId(),
+    version: 0,
+    status: "draft",
+    name: "Untitled Workout",
+    description: "",
+    focus: [],
+    coachNotes: "",
+    tiers: {},
+    createdAt: now,
+    updatedAt: now,
+    publishedAt: null,
+  };
+};
 
-  // Validation function
-  const validateWorkout = useCallback((workout: Workout): string[] => {
-    const errors: string[] = [];
+const parseZoneNumber = (value?: string | null): number | null => {
+  if (!value) return null;
+  const match = value.match(/Z(\d+)/i) || value.match(/Zone\s*(\d+)/i);
+  if (!match) return null;
+  const zone = parseInt(match[1], 10);
+  return Number.isNaN(zone) ? null : zone;
+};
 
-    if (!workout.name || workout.name.trim() === "") {
-      errors.push("Name is required");
-    }
+const effortIdFromZone = (zone: number | null): string => {
+  if (!zone || zone <= 1) return "recovery";
+  if (zone === 2) return "aerobic";
+  if (zone === 3) return "tempo";
+  if (zone === 4) return "threshold";
+  return "interval";
+};
 
-    const enabledTiers = Object.keys(workout.tiers) as TierLabel[];
-    if (enabledTiers.length === 0) {
-      errors.push("At least one tier must be enabled");
-    }
+const resolveEffortBlockId = (target?: IntervalTarget | null): string => {
+  const zoneNumber = target?.zone ? parseZoneNumber(target.zone) : null;
+  return effortIdFromZone(zoneNumber ?? 1);
+};
 
-    for (const tierKey of enabledTiers) {
-      const tier = workout.tiers[tierKey];
-      if (!tier || tier.structure.length === 0) {
-        errors.push(`Tier ${tierKey} must have at least one interval`);
-      } else {
-        for (let i = 0; i < tier.structure.length; i++) {
-          const interval = tier.structure[i];
-          if (!interval.work.duration || interval.work.duration.trim() === "") {
-            errors.push(`Tier ${tierKey}, Interval ${i + 1}: work duration is required`);
-          }
-          if (!interval.work.target.zone || interval.work.target.zone.trim() === "") {
-            errors.push(`Tier ${tierKey}, Interval ${i + 1}: work zone is required`);
-          }
-        }
-      }
-    }
+const targetFromEffortBlockId = (effortBlockId: string): IntervalTarget => {
+  const effort = effortBlocks.find((block) => block.id === effortBlockId);
+  const zoneNumber = effort ? parseZoneNumber(effort.target) : 1;
+  return {
+    type: "pace",
+    zone: `Z${zoneNumber ?? 1}`,
+  };
+};
 
-    return errors;
-  }, []);
+const defaultRestTarget = (): IntervalTarget => ({
+  type: "pace",
+  zone: "Z1",
+});
 
-  // Generate workout ID
-  const generateWorkoutId = useCallback((name: string): string => {
-    const slug = name.toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, "")
-      .replace(/\s+/g, "-")
-      .replace(/-+/g, "-")
-      .trim();
-    const timestamp = Date.now();
-    return slug ? `workout-${slug}` : `workout-${timestamp}`;
-  }, []);
+const defaultTierName = (workout: Workout, tier: TierLabel) => {
+  const name = workout.name?.trim() || "Untitled Workout";
+  return `${name} (${tier})`;
+};
 
-  // Create new workout
-  const handleCreateNew = useCallback(() => {
-    const newWorkout: Workout = {
-      workoutId: "",
-      version: 0,
-      status: "draft",
-      name: "",
-      description: "",
-      focus: [],
-      coachNotes: "",
-      tiers: {
-        MED: {
-          name: "",
-          structure: [],
-        },
-      },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      publishedAt: null,
-    };
-    setEditingWorkout(newWorkout);
-    setIsCreating(true);
-    setValidationErrors([]);
-    setError(null);
-    setSuccess(null);
-  }, []);
-
-  // Edit existing workout
-  const handleEdit = useCallback((workout: Workout) => {
-    setEditingWorkout(JSON.parse(JSON.stringify(workout)));
-    setIsCreating(false);
-    setValidationErrors([]);
-    setError(null);
-    setSuccess(null);
-  }, []);
-
-  // Cancel editing
-  const handleCancel = useCallback(() => {
-    setEditingWorkout(null);
-    setIsCreating(false);
-    setValidationErrors([]);
-    setError(null);
-  }, []);
-
-  // Save draft
-  const handleSaveDraft = useCallback(async () => {
-    if (!editingWorkout) return;
-
-    const errors = validateWorkout(editingWorkout);
-    if (errors.length > 0) {
-      setValidationErrors(errors);
-      return;
-    }
-
-    setIsSaving(true);
-    setError(null);
-    setSuccess(null);
-    setValidationErrors([]);
-
-    try {
-      const updatedWorkout = {
-        ...editingWorkout,
-        workoutId: editingWorkout.workoutId || generateWorkoutId(editingWorkout.name),
-        updatedAt: new Date().toISOString(),
-      };
-
-      // Update tier names
-      for (const tierKey of Object.keys(updatedWorkout.tiers) as TierLabel[]) {
-        const tier = updatedWorkout.tiers[tierKey];
-        if (tier) {
-          tier.name = `${updatedWorkout.name} (${tierKey})`;
-        }
-      }
-
-      let newWorkouts: Workout[];
-      if (isCreating) {
-        newWorkouts = [...workouts, updatedWorkout];
-      } else {
-        newWorkouts = workouts.map((w) =>
-          w.workoutId === updatedWorkout.workoutId ? updatedWorkout : w
-        );
-      }
-
-      await saveWorkoutsMaster({ version: 1, workouts: newWorkouts });
-      setWorkouts(newWorkouts);
-      setSuccess("Draft saved successfully!");
-      setEditingWorkout(updatedWorkout);
-      setIsCreating(false);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setError(`Failed to save: ${message}`);
-    } finally {
-      setIsSaving(false);
-    }
-  }, [editingWorkout, isCreating, workouts, validateWorkout, generateWorkoutId]);
-
-  // Publish workout
-  const handlePublish = useCallback(async () => {
-    if (!editingWorkout) return;
-
-    const errors = validateWorkout(editingWorkout);
-    if (errors.length > 0) {
-      setValidationErrors(errors);
-      return;
-    }
-
-    setIsSaving(true);
-    setError(null);
-    setSuccess(null);
-    setValidationErrors([]);
-
-    try {
-      const publishedWorkout = {
-        ...editingWorkout,
-        status: "published" as WorkoutStatus,
-        version: editingWorkout.version === 0 ? 1 : editingWorkout.version,
-        publishedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      let newWorkouts: Workout[];
-      if (isCreating || !workouts.find((w) => w.workoutId === publishedWorkout.workoutId)) {
-        publishedWorkout.workoutId = publishedWorkout.workoutId || generateWorkoutId(publishedWorkout.name);
-        newWorkouts = [...workouts, publishedWorkout];
-      } else {
-        newWorkouts = workouts.map((w) =>
-          w.workoutId === publishedWorkout.workoutId ? publishedWorkout : w
-        );
-      }
-
-      await saveWorkoutsMaster({ version: 1, workouts: newWorkouts });
-      setWorkouts(newWorkouts);
-      setSuccess("Workout published successfully!");
-      setEditingWorkout(publishedWorkout);
-      setIsCreating(false);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setError(`Failed to publish: ${message}`);
-    } finally {
-      setIsSaving(false);
-    }
-  }, [editingWorkout, isCreating, workouts, validateWorkout, generateWorkoutId]);
-
-  // Archive workout
-  const handleArchive = useCallback(async () => {
-    if (!editingWorkout || editingWorkout.status !== "published") return;
-
-    setIsSaving(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const archivedWorkout = {
-        ...editingWorkout,
-        status: "archived" as WorkoutStatus,
-      };
-
-      const newWorkouts = workouts.map((w) =>
-        w.workoutId === archivedWorkout.workoutId ? archivedWorkout : w
-      );
-
-      await saveWorkoutsMaster({ version: 1, workouts: newWorkouts });
-      setWorkouts(newWorkouts);
-      setSuccess("Workout archived successfully!");
-      setEditingWorkout(archivedWorkout);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setError(`Failed to archive: ${message}`);
-    } finally {
-      setIsSaving(false);
-    }
-  }, [editingWorkout, workouts]);
-
-  // Delete workout
-  const handleDelete = useCallback(async () => {
-    if (!editingWorkout || editingWorkout.status !== "draft") return;
-
-    if (!confirm("Are you sure you want to delete this draft workout? This cannot be undone.")) {
-      return;
-    }
-
-    setIsSaving(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const newWorkouts = workouts.filter((w) => w.workoutId !== editingWorkout.workoutId);
-      await saveWorkoutsMaster({ version: 1, workouts: newWorkouts });
-      setWorkouts(newWorkouts);
-      setSuccess("Workout deleted successfully!");
-      setEditingWorkout(null);
-      setIsCreating(false);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setError(`Failed to delete: ${message}`);
-    } finally {
-      setIsSaving(false);
-    }
-  }, [editingWorkout, workouts]);
-
-  // Clone workout
-  const handleClone = useCallback(() => {
-    if (!editingWorkout) return;
-
-    const clonedWorkout: Workout = {
-      ...JSON.parse(JSON.stringify(editingWorkout)),
-      workoutId: "",
-      version: 0,
-      status: "draft",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      publishedAt: null,
-    };
-
-    setEditingWorkout(clonedWorkout);
-    setIsCreating(true);
-    setSuccess("Cloned as draft. Modify and save to create a new workout.");
-    setError(null);
-    setValidationErrors([]);
-  }, [editingWorkout]);
-
-  // Update field
-  const updateField = useCallback(
-    <K extends keyof Workout>(field: K, value: Workout[K]) => {
-      if (!editingWorkout) return;
-      setEditingWorkout({ ...editingWorkout, [field]: value });
+const buildSegmentFromBlock = (block: WorkoutBlockInstance): IntervalSegment => {
+  return {
+    type: "interval",
+    reps: block.reps && block.reps > 0 ? block.reps : 1,
+    work: {
+      duration: block.duration ?? "",
+      target: targetFromEffortBlockId(block.effortBlockId),
+      cues: block.notes ? [block.notes] : [],
     },
-    [editingWorkout]
-  );
+    rest: block.rest
+      ? {
+          duration: block.rest,
+          target: defaultRestTarget(),
+          cues: [],
+        }
+      : null,
+  };
+};
 
-  // Filtered workouts
-  const filteredWorkouts = workouts.filter((workout) => {
-    const matchesStatus = statusFilter === "all" || workout.status === statusFilter;
-    const matchesSearch =
-      searchQuery === "" ||
-      workout.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      workout.focus.some((f) => f.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesStatus && matchesSearch;
+const buildBlockFromSegment = (segment: IntervalSegment, tier: TierLabel, index: number): WorkoutBlockInstance => {
+  return {
+    id: `${tier}-${index}`,
+    sourceIndex: index,
+    effortBlockId: resolveEffortBlockId(segment.work?.target),
+    duration: segment.work?.duration ?? null,
+    rest: segment.rest?.duration ?? null,
+    reps: segment.reps ?? null,
+    notes: segment.work?.cues?.[0] ?? null,
+  };
+};
+
+const workoutToView = (workout: Workout): WorkoutBuilderWorkout => {
+  const tiers: Record<TierLabel, WorkoutBlockInstance[]> = { ...emptyTierBlocks };
+  (Object.keys(emptyTierBlocks) as TierLabel[]).forEach((tier) => {
+    const variant = workout.tiers[tier];
+    if (!variant) return;
+    tiers[tier] = variant.structure.map((segment, index) => buildBlockFromSegment(segment, tier, index));
   });
 
-  if (isLoading) {
-    return (
-      <div style={{ padding: "2rem", textAlign: "center" }}>
-        <p>Loading workouts...</p>
-      </div>
-    );
-  }
+  return {
+    id: workout.workoutId,
+    name: workout.name ?? null,
+    description: workout.description ?? null,
+    tags: workout.focus ?? [],
+    tiers,
+    status: workout.status,
+  };
+};
 
-  // Show editor view
-  if (editingWorkout) {
-    return (
-      <WorkoutEditor
-        workout={editingWorkout}
-        isCreating={isCreating}
-        isSaving={isSaving}
-        error={error}
-        success={success}
-        validationErrors={validationErrors}
-        onCancel={handleCancel}
-        onSaveDraft={handleSaveDraft}
-        onPublish={handlePublish}
-        onArchive={handleArchive}
-        onDelete={handleDelete}
-        onClone={handleClone}
-        updateField={updateField}
-      />
-    );
-  }
+const normalizeTierVariant = (workout: Workout, tier: TierLabel): TierVariant => {
+  const existing = workout.tiers[tier];
+  if (existing) return existing;
+  return {
+    name: defaultTierName(workout, tier),
+    structure: [],
+  };
+};
 
-  // Show list view
-  return (
-    <div style={{ padding: "2rem", maxWidth: "1200px", margin: "0 auto" }}>
-      <h1 style={{ fontSize: "2rem", marginBottom: "1rem" }}>Workout Library Manager</h1>
-
-      {error && (
-        <div
-          style={{
-            padding: "1rem",
-            marginBottom: "1rem",
-            backgroundColor: "#fee",
-            border: "1px solid #fcc",
-            borderRadius: "4px",
-            color: "#c00",
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      {success && (
-        <div
-          style={{
-            padding: "1rem",
-            marginBottom: "1rem",
-            backgroundColor: "#efe",
-            border: "1px solid #cfc",
-            borderRadius: "4px",
-            color: "#060",
-          }}
-        >
-          {success}
-        </div>
-      )}
-
-      <div
-        style={{
-          display: "flex",
-          gap: "1rem",
-          marginBottom: "1rem",
-          alignItems: "center",
-        }}
-      >
-        <input
-          type="text"
-          placeholder="Search by name or focus..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          style={{
-            flex: 1,
-            padding: "0.5rem",
-            border: "1px solid #ccc",
-            borderRadius: "4px",
-          }}
-        />
-
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as WorkoutStatus | "all")}
-          style={{
-            padding: "0.5rem",
-            border: "1px solid #ccc",
-            borderRadius: "4px",
-          }}
-        >
-          <option value="all">All Status</option>
-          <option value="draft">Draft</option>
-          <option value="published">Published</option>
-          <option value="archived">Archived</option>
-        </select>
-
-        <button
-          onClick={handleCreateNew}
-          style={{
-            padding: "0.5rem 1rem",
-            backgroundColor: "#007bff",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: "pointer",
-          }}
-        >
-          Create New Workout
-        </button>
-      </div>
-
-      {filteredWorkouts.length === 0 ? (
-        <p style={{ textAlign: "center", color: "#666", marginTop: "2rem" }}>
-          No workouts found. {statusFilter !== "all" && "Try changing the filter or "}Create a new
-          workout to get started.
-        </p>
-      ) : (
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            border: "1px solid #ddd",
-          }}
-        >
-          <thead>
-            <tr style={{ backgroundColor: "#f5f5f5" }}>
-              <th style={{ padding: "0.75rem", textAlign: "left", borderBottom: "2px solid #ddd" }}>
-                Name
-              </th>
-              <th style={{ padding: "0.75rem", textAlign: "left", borderBottom: "2px solid #ddd" }}>
-                Status
-              </th>
-              <th style={{ padding: "0.75rem", textAlign: "left", borderBottom: "2px solid #ddd" }}>
-                Version
-              </th>
-              <th style={{ padding: "0.75rem", textAlign: "left", borderBottom: "2px solid #ddd" }}>
-                Focus
-              </th>
-              <th style={{ padding: "0.75rem", textAlign: "left", borderBottom: "2px solid #ddd" }}>
-                Tiers
-              </th>
-              <th style={{ padding: "0.75rem", textAlign: "left", borderBottom: "2px solid #ddd" }}>
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredWorkouts.map((workout) => (
-              <tr key={workout.workoutId} style={{ borderBottom: "1px solid #ddd" }}>
-                <td style={{ padding: "0.75rem" }}>{workout.name}</td>
-                <td style={{ padding: "0.75rem" }}>
-                  <span
-                    style={{
-                      padding: "0.25rem 0.5rem",
-                      borderRadius: "4px",
-                      fontSize: "0.875rem",
-                      backgroundColor:
-                        workout.status === "draft"
-                          ? "#fef3c7"
-                          : workout.status === "published"
-                          ? "#d1fae5"
-                          : "#e5e7eb",
-                      color:
-                        workout.status === "draft"
-                          ? "#92400e"
-                          : workout.status === "published"
-                          ? "#065f46"
-                          : "#374151",
-                    }}
-                  >
-                    {workout.status}
-                  </span>
-                </td>
-                <td style={{ padding: "0.75rem" }}>v{workout.version}</td>
-                <td style={{ padding: "0.75rem" }}>
-                  {workout.focus.length > 0 ? workout.focus.join(", ") : "-"}
-                </td>
-                <td style={{ padding: "0.75rem" }}>
-                  {Object.keys(workout.tiers).join(", ")}
-                </td>
-                <td style={{ padding: "0.75rem" }}>
-                  <button
-                    onClick={() => handleEdit(workout)}
-                    style={{
-                      padding: "0.25rem 0.75rem",
-                      backgroundColor: "#007bff",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "4px",
-                      cursor: "pointer",
-                      fontSize: "0.875rem",
-                    }}
-                  >
-                    {workout.status === "draft" ? "Edit" : "View"}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
-
-// Workout Editor Component
-interface WorkoutEditorProps {
-  workout: Workout;
-  isCreating: boolean;
-  isSaving: boolean;
-  error: string | null;
-  success: string | null;
-  validationErrors: string[];
-  onCancel: () => void;
-  onSaveDraft: () => void;
-  onPublish: () => void;
-  onArchive: () => void;
-  onDelete: () => void;
-  onClone: () => void;
-  updateField: <K extends keyof Workout>(field: K, value: Workout[K]) => void;
-}
-
-function WorkoutEditor({
-  workout,
-  isCreating,
-  isSaving,
-  error,
-  success,
-  validationErrors,
-  onCancel,
-  onSaveDraft,
-  onPublish,
-  onArchive,
-  onDelete,
-  onClone,
-  updateField,
-}: WorkoutEditorProps) {
-  const [activeTier, setActiveTier] = useState<TierLabel>("MED");
-  const isDraft = workout.status === "draft";
-  const isPublished = workout.status === "published";
-  const isArchived = workout.status === "archived";
-
-  // Update tier
-  const updateTier = useCallback(
-    (tierKey: TierLabel, tier: TierVariant | undefined) => {
-      const newTiers = { ...workout.tiers };
-      if (tier) {
-        newTiers[tierKey] = tier;
-      } else {
-        delete newTiers[tierKey];
-      }
-      updateField("tiers", newTiers);
-    },
-    [workout.tiers, updateField]
-  );
-
-  // Enable/disable tier
-  const toggleTier = useCallback(
-    (tierKey: TierLabel) => {
-      if (workout.tiers[tierKey]) {
-        updateTier(tierKey, undefined);
-      } else {
-        updateTier(tierKey, {
-          name: `${workout.name} (${tierKey})`,
-          structure: [],
-        });
-        setActiveTier(tierKey);
-      }
-    },
-    [workout.tiers, workout.name, updateTier]
-  );
-
-  return (
-    <div style={{ padding: "2rem", maxWidth: "1200px", margin: "0 auto" }}>
-      <div style={{ marginBottom: "1rem" }}>
-        <button
-          onClick={onCancel}
-          style={{
-            padding: "0.5rem 1rem",
-            backgroundColor: "#6c757d",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: "pointer",
-          }}
-        >
-          ← Back to List
-        </button>
-      </div>
-
-      <h1 style={{ fontSize: "2rem", marginBottom: "1rem" }}>
-        {isCreating ? "Create New Workout" : "Edit Workout"}
-      </h1>
-
-      {error && (
-        <div
-          style={{
-            padding: "1rem",
-            marginBottom: "1rem",
-            backgroundColor: "#fee",
-            border: "1px solid #fcc",
-            borderRadius: "4px",
-            color: "#c00",
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      {success && (
-        <div
-          style={{
-            padding: "1rem",
-            marginBottom: "1rem",
-            backgroundColor: "#efe",
-            border: "1px solid #cfc",
-            borderRadius: "4px",
-            color: "#060",
-          }}
-        >
-          {success}
-        </div>
-      )}
-
-      {validationErrors.length > 0 && (
-        <div
-          style={{
-            padding: "1rem",
-            marginBottom: "1rem",
-            backgroundColor: "#fff3cd",
-            border: "1px solid #ffc107",
-            borderRadius: "4px",
-            color: "#856404",
-          }}
-        >
-          <strong>Validation Errors:</strong>
-          <ul style={{ marginTop: "0.5rem", marginBottom: 0, paddingLeft: "1.5rem" }}>
-            {validationErrors.map((err, idx) => (
-              <li key={idx}>{err}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Header Section */}
-      <div
-        style={{
-          padding: "1.5rem",
-          backgroundColor: "#f9fafb",
-          border: "1px solid #e5e7eb",
-          borderRadius: "8px",
-          marginBottom: "1.5rem",
-        }}
-      >
-        <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem" }}>
-          <div style={{ flex: 1 }}>
-            <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "500" }}>
-              Workout Name <span style={{ color: "#dc2626" }}>*</span>
-            </label>
-            <input
-              type="text"
-              value={workout.name}
-              onChange={(e) => updateField("name", e.target.value)}
-              disabled={!isDraft}
-              placeholder="e.g., Threshold 40"
-              style={{
-                width: "100%",
-                padding: "0.5rem",
-                border: "1px solid #d1d5db",
-                borderRadius: "4px",
-                backgroundColor: isDraft ? "white" : "#f3f4f6",
-              }}
-            />
-          </div>
-
-          <div style={{ width: "120px" }}>
-            <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "500" }}>
-              Status
-            </label>
-            <span
-              style={{
-                display: "inline-block",
-                padding: "0.5rem",
-                borderRadius: "4px",
-                fontSize: "0.875rem",
-                backgroundColor:
-                  workout.status === "draft"
-                    ? "#fef3c7"
-                    : workout.status === "published"
-                    ? "#d1fae5"
-                    : "#e5e7eb",
-                color:
-                  workout.status === "draft"
-                    ? "#92400e"
-                    : workout.status === "published"
-                    ? "#065f46"
-                    : "#374151",
-              }}
-            >
-              {workout.status}
-            </span>
-          </div>
-
-          <div style={{ width: "100px" }}>
-            <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "500" }}>
-              Version
-            </label>
-            <span style={{ display: "block", padding: "0.5rem" }}>v{workout.version}</span>
-          </div>
-        </div>
-
-        <div style={{ marginBottom: "1rem" }}>
-          <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "500" }}>
-            Description
-          </label>
-          <textarea
-            value={workout.description}
-            onChange={(e) => updateField("description", e.target.value)}
-            disabled={!isDraft}
-            placeholder="Brief description of the workout"
-            style={{
-              width: "100%",
-              padding: "0.5rem",
-              border: "1px solid #d1d5db",
-              borderRadius: "4px",
-              minHeight: "80px",
-              backgroundColor: isDraft ? "white" : "#f3f4f6",
-            }}
-          />
-        </div>
-
-        <div style={{ marginBottom: "1rem" }}>
-          <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "500" }}>
-            Focus Tags (comma-separated)
-          </label>
-          <input
-            type="text"
-            value={workout.focus.join(", ")}
-            onChange={(e) =>
-              updateField(
-                "focus",
-                e.target.value.split(",").map((f) => f.trim()).filter(Boolean)
-              )
-            }
-            disabled={!isDraft}
-            placeholder="e.g., threshold, tempo, endurance"
-            style={{
-              width: "100%",
-              padding: "0.5rem",
-              border: "1px solid #d1d5db",
-              borderRadius: "4px",
-              backgroundColor: isDraft ? "white" : "#f3f4f6",
-            }}
-          />
-        </div>
-
-        <div>
-          <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "500" }}>
-            Coach Notes
-          </label>
-          <textarea
-            value={workout.coachNotes}
-            onChange={(e) => updateField("coachNotes", e.target.value)}
-            disabled={!isDraft}
-            placeholder="Execution guidance for coaches/athletes"
-            style={{
-              width: "100%",
-              padding: "0.5rem",
-              border: "1px solid #d1d5db",
-              borderRadius: "4px",
-              minHeight: "80px",
-              backgroundColor: isDraft ? "white" : "#f3f4f6",
-            }}
-          />
-        </div>
-      </div>
-
-      {/* Tier Section */}
-      <div
-        style={{
-          padding: "1.5rem",
-          backgroundColor: "#f9fafb",
-          border: "1px solid #e5e7eb",
-          borderRadius: "8px",
-          marginBottom: "1.5rem",
-        }}
-      >
-        <h2 style={{ fontSize: "1.25rem", marginBottom: "1rem" }}>Tier Variants</h2>
-
-        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-          {(["MED", "LRG", "XL"] as TierLabel[]).map((tierKey) => (
-            <label key={tierKey} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <input
-                type="checkbox"
-                checked={!!workout.tiers[tierKey]}
-                onChange={() => toggleTier(tierKey)}
-                disabled={!isDraft}
-              />
-              <span>{tierKey}</span>
-            </label>
-          ))}
-        </div>
-
-        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-          {(Object.keys(workout.tiers) as TierLabel[]).map((tierKey) => (
-            <button
-              key={tierKey}
-              onClick={() => setActiveTier(tierKey)}
-              style={{
-                padding: "0.5rem 1rem",
-                backgroundColor: activeTier === tierKey ? "#007bff" : "#e5e7eb",
-                color: activeTier === tierKey ? "white" : "#374151",
-                border: "none",
-                borderRadius: "4px",
-                cursor: "pointer",
-              }}
-            >
-              {tierKey}
-            </button>
-          ))}
-        </div>
-
-        {workout.tiers[activeTier] && (
-          <TierEditor
-            tier={workout.tiers[activeTier]!}
-            tierKey={activeTier}
-            isDraft={isDraft}
-            onUpdate={(tier) => updateTier(activeTier, tier)}
-          />
-        )}
-      </div>
-
-      {/* Actions */}
-      <div
-        style={{
-          display: "flex",
-          gap: "1rem",
-          padding: "1.5rem",
-          backgroundColor: "#f9fafb",
-          border: "1px solid #e5e7eb",
-          borderRadius: "8px",
-        }}
-      >
-        {isDraft && (
-          <>
-            <button
-              onClick={onSaveDraft}
-              disabled={isSaving}
-              style={{
-                padding: "0.5rem 1rem",
-                backgroundColor: "#28a745",
-                color: "white",
-                border: "none",
-                borderRadius: "4px",
-                cursor: isSaving ? "not-allowed" : "pointer",
-                opacity: isSaving ? 0.5 : 1,
-              }}
-            >
-              {isSaving ? "Saving..." : "Save Draft"}
-            </button>
-            <button
-              onClick={onPublish}
-              disabled={isSaving}
-              style={{
-                padding: "0.5rem 1rem",
-                backgroundColor: "#007bff",
-                color: "white",
-                border: "none",
-                borderRadius: "4px",
-                cursor: isSaving ? "not-allowed" : "pointer",
-                opacity: isSaving ? 0.5 : 1,
-              }}
-            >
-              {isSaving ? "Publishing..." : "Publish"}
-            </button>
-            <button
-              onClick={onDelete}
-              disabled={isSaving}
-              style={{
-                padding: "0.5rem 1rem",
-                backgroundColor: "#dc3545",
-                color: "white",
-                border: "none",
-                borderRadius: "4px",
-                cursor: isSaving ? "not-allowed" : "pointer",
-                opacity: isSaving ? 0.5 : 1,
-              }}
-            >
-              Delete
-            </button>
-          </>
-        )}
-
-        {isPublished && (
-          <>
-            <button
-              onClick={onArchive}
-              disabled={isSaving}
-              style={{
-                padding: "0.5rem 1rem",
-                backgroundColor: "#ffc107",
-                color: "#333",
-                border: "none",
-                borderRadius: "4px",
-                cursor: isSaving ? "not-allowed" : "pointer",
-                opacity: isSaving ? 0.5 : 1,
-              }}
-            >
-              {isSaving ? "Archiving..." : "Archive"}
-            </button>
-            <button
-              onClick={onClone}
-              style={{
-                padding: "0.5rem 1rem",
-                backgroundColor: "#6c757d",
-                color: "white",
-                border: "none",
-                borderRadius: "4px",
-                cursor: "pointer",
-              }}
-            >
-              Clone to Draft
-            </button>
-          </>
-        )}
-
-        {isArchived && (
-          <button
-            onClick={onClone}
-            style={{
-              padding: "0.5rem 1rem",
-              backgroundColor: "#6c757d",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-            }}
-          >
-            Clone to Draft
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Tier Editor Component
-interface TierEditorProps {
-  tier: TierVariant;
-  tierKey: TierLabel;
-  isDraft: boolean;
-  onUpdate: (tier: TierVariant) => void;
-}
-
-function TierEditor({ tier, tierKey, isDraft, onUpdate }: TierEditorProps) {
-  const addInterval = useCallback(() => {
-    const newInterval: IntervalSegment = {
-      type: "interval",
-      reps: 1,
-      work: {
-        duration: "",
-        target: { type: "pace", zone: "Z2" },
-        cues: [],
+const updateTierStructure = (
+  workout: Workout,
+  tier: TierLabel,
+  nextStructure: IntervalSegment[]
+): Workout => {
+  const existing = normalizeTierVariant(workout, tier);
+  return {
+    ...workout,
+    tiers: {
+      ...workout.tiers,
+      [tier]: {
+        ...existing,
+        name: existing.name || defaultTierName(workout, tier),
+        structure: nextStructure,
       },
-      rest: null,
+    },
+  };
+};
+
+const groupWorkouts = (workouts: Workout[]): WorkoutGroup[] => {
+  const groups = new Map<string, WorkoutGroup>();
+
+  for (const workout of workouts) {
+    const group = groups.get(workout.workoutId) ?? {
+      workoutId: workout.workoutId,
+      published: [],
+      archived: [],
     };
-    onUpdate({
-      ...tier,
-      structure: [...tier.structure, newInterval],
-    });
-  }, [tier, onUpdate]);
 
-  const removeInterval = useCallback(
-    (index: number) => {
-      onUpdate({
-        ...tier,
-        structure: tier.structure.filter((_, i) => i !== index),
-      });
-    },
-    [tier, onUpdate]
-  );
-
-  const updateInterval = useCallback(
-    (index: number, interval: IntervalSegment) => {
-      const newStructure = [...tier.structure];
-      newStructure[index] = interval;
-      onUpdate({
-        ...tier,
-        structure: newStructure,
-      });
-    },
-    [tier, onUpdate]
-  );
-
-  return (
-    <div>
-      <div style={{ marginBottom: "1rem" }}>
-        {tier.structure.length === 0 ? (
-          <p style={{ color: "#666", textAlign: "center", padding: "2rem" }}>
-            No intervals yet. Add an interval to get started.
-          </p>
-        ) : (
-          tier.structure.map((interval, idx) => (
-            <IntervalEditor
-              key={idx}
-              interval={interval}
-              index={idx}
-              isDraft={isDraft}
-              onUpdate={(interval) => updateInterval(idx, interval)}
-              onRemove={() => removeInterval(idx)}
-            />
-          ))
-        )}
-      </div>
-
-      {isDraft && (
-        <button
-          onClick={addInterval}
-          style={{
-            padding: "0.5rem 1rem",
-            backgroundColor: "#007bff",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: "pointer",
-          }}
-        >
-          + Add Interval
-        </button>
-      )}
-    </div>
-  );
-}
-
-// Interval Editor Component
-interface IntervalEditorProps {
-  interval: IntervalSegment;
-  index: number;
-  isDraft: boolean;
-  onUpdate: (interval: IntervalSegment) => void;
-  onRemove: () => void;
-}
-
-function IntervalEditor({ interval, index, isDraft, onUpdate, onRemove }: IntervalEditorProps) {
-  const [showRest, setShowRest] = useState(!!interval.rest);
-
-  const updateWorkCues = useCallback(
-    (cuesText: string) => {
-      onUpdate({
-        ...interval,
-        work: {
-          ...interval.work,
-          cues: cuesText.split("\n").filter(Boolean),
-        },
-      });
-    },
-    [interval, onUpdate]
-  );
-
-  const updateRestCues = useCallback(
-    (cuesText: string) => {
-      if (!interval.rest) return;
-      onUpdate({
-        ...interval,
-        rest: {
-          ...interval.rest,
-          cues: cuesText.split("\n").filter(Boolean),
-        },
-      });
-    },
-    [interval, onUpdate]
-  );
-
-  const toggleRest = useCallback(() => {
-    if (showRest && interval.rest) {
-      onUpdate({ ...interval, rest: null });
-      setShowRest(false);
-    } else {
-      onUpdate({
-        ...interval,
-        rest: {
-          duration: "",
-          target: { type: "pace", zone: "Z2" },
-          cues: [],
-        },
-      });
-      setShowRest(true);
+    if (workout.status === "draft") {
+      if (!group.draft || (workout.updatedAt || "") > (group.draft.updatedAt || "")) {
+        group.draft = workout;
+      }
+    } else if (workout.status === "published") {
+      group.published.push(workout);
+    } else if (workout.status === "archived") {
+      group.archived.push(workout);
     }
-  }, [showRest, interval, onUpdate]);
+
+    groups.set(workout.workoutId, group);
+  }
+
+  return [...groups.values()].map((group) => ({
+    ...group,
+    published: group.published.sort((a, b) => (b.version ?? 0) - (a.version ?? 0)),
+    archived: group.archived.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || "")),
+  }));
+};
+
+export default function WorkoutBuilder() {
+  const [mode, setMode] = useState<ViewMode>("builder");
+  const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [currentWorkout, setCurrentWorkout] = useState<Workout>(() => createDraftWorkout());
+  const [previewWorkout, setPreviewWorkout] = useState<Workout | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const [showPublishOverlay, setShowPublishOverlay] = useState(false);
+
+  const refreshWorkouts = async () => {
+    const response = await fetch("/api/workouts");
+    if (!response.ok) {
+      throw new Error("Failed to load workouts");
+    }
+    const data = (await response.json()) as WorkoutsMaster;
+    setWorkouts(Array.isArray(data.workouts) ? data.workouts : []);
+    return data.workouts ?? [];
+  };
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const list = await refreshWorkouts();
+        const drafts = list.filter((workout) => workout.status === "draft");
+        const published = list.filter((workout) => workout.status === "published");
+        if (drafts.length > 0) {
+          const latestDraft = drafts.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))[0];
+          setCurrentWorkout(latestDraft);
+          setMode("builder");
+        } else if (published.length > 0) {
+          const latestPublished = published.sort((a, b) => (b.version ?? 0) - (a.version ?? 0))[0];
+          setPreviewWorkout(latestPublished);
+          setMode("preview");
+        } else {
+          setCurrentWorkout(createDraftWorkout());
+          setMode("builder");
+        }
+        setIsDirty(false);
+      } catch {
+        setCurrentWorkout(createDraftWorkout());
+        setMode("builder");
+      }
+    };
+
+    load();
+  }, []);
+
+  const effortLookup = useMemo<Record<string, EffortBlockDefinition>>(() => {
+    return Object.fromEntries(effortBlocks.map((block) => [block.id, block]));
+  }, []);
+
+  const isPreview = mode === "preview";
+  const isLocked = isPreview;
+
+  const confirmDiscardIfDirty = () => {
+    if (!isDirty) return true;
+    return window.confirm("You have unsaved changes. Discard them and continue?");
+  };
+
+  // Draft-only invariant: builder must never mutate non-draft workouts.
+  const ensureDraftForBuilder = () => {
+    if (currentWorkout.status !== "draft") {
+      console.error("WorkoutBuilder invariant violated: non-draft entered builder", currentWorkout);
+      return false;
+    }
+    return true;
+  };
+
+  const handleDropEffortBlock = (tier: TierLabel, payload: EffortBlockDragPayload) => {
+    if (!ensureDraftForBuilder()) return;
+    const instance: WorkoutBlockInstance = {
+      id: `${tier}-${Date.now()}`,
+      effortBlockId: payload.effortBlockId,
+      duration: null,
+      rest: null,
+      reps: null,
+      notes: null,
+    };
+
+    setCurrentWorkout((prev) => {
+      const variant = normalizeTierVariant(prev, tier);
+      const nextStructure = [...variant.structure, buildSegmentFromBlock(instance)];
+      return updateTierStructure(prev, tier, nextStructure);
+    });
+    setIsDirty(true);
+  };
+
+  const handleDeleteBlock = (tier: TierLabel, id: string) => {
+    if (!ensureDraftForBuilder()) return;
+    setCurrentWorkout((prev) => {
+      const variant = normalizeTierVariant(prev, tier);
+      const viewBlocks = variant.structure.map((segment, index) => buildBlockFromSegment(segment, tier, index));
+      const target = viewBlocks.find((block) => block.id === id);
+      if (!target || target.sourceIndex === undefined) return prev;
+      const nextStructure = variant.structure.filter((_, index) => index !== target.sourceIndex);
+      return updateTierStructure(prev, tier, nextStructure);
+    });
+    setIsDirty(true);
+  };
+
+  const handleUpdateBlock = (tier: TierLabel, id: string, updates: Partial<WorkoutBlockInstance>) => {
+    if (!ensureDraftForBuilder()) return;
+    setCurrentWorkout((prev) => {
+      const variant = normalizeTierVariant(prev, tier);
+      const viewBlocks = variant.structure.map((segment, index) => buildBlockFromSegment(segment, tier, index));
+      const target = viewBlocks.find((block) => block.id === id);
+      if (!target || target.sourceIndex === undefined) return prev;
+
+      const mergedBlock: WorkoutBlockInstance = { ...target, ...updates };
+      const nextStructure = variant.structure.map((segment, index) => {
+        if (index !== target.sourceIndex) return segment;
+        return buildSegmentFromBlock(mergedBlock);
+      });
+
+      return updateTierStructure(prev, tier, nextStructure);
+    });
+    setIsDirty(true);
+  };
+
+  const handleReorderBlocks = (tier: TierLabel, nextBlocks: WorkoutBlockInstance[]) => {
+    if (!ensureDraftForBuilder()) return;
+    setCurrentWorkout((prev) => {
+      const variant = normalizeTierVariant(prev, tier);
+      const nextStructure = nextBlocks.map((block) => {
+        if (block.sourceIndex !== undefined && block.id.startsWith(`${tier}-`)) {
+          return variant.structure[block.sourceIndex];
+        }
+        return buildSegmentFromBlock(block);
+      });
+      return updateTierStructure(prev, tier, nextStructure);
+    });
+    setIsDirty(true);
+  };
+
+  const handleMoveBlocks = (
+    sourceTier: TierLabel,
+    targetTier: TierLabel,
+    nextSourceBlocks: WorkoutBlockInstance[],
+    nextTargetBlocks: WorkoutBlockInstance[]
+  ) => {
+    if (!ensureDraftForBuilder()) return;
+    setCurrentWorkout((prev) => {
+      const sourceVariant = normalizeTierVariant(prev, sourceTier);
+      const targetVariant = normalizeTierVariant(prev, targetTier);
+
+      const nextSourceStructure = nextSourceBlocks.map((block) => {
+        if (block.sourceIndex !== undefined && block.id.startsWith(`${sourceTier}-`)) {
+          return sourceVariant.structure[block.sourceIndex];
+        }
+        return buildSegmentFromBlock(block);
+      });
+
+      const nextTargetStructure = nextTargetBlocks.map((block) => {
+        if (block.sourceIndex !== undefined && block.id.startsWith(`${targetTier}-`)) {
+          return targetVariant.structure[block.sourceIndex];
+        }
+        return buildSegmentFromBlock(block);
+      });
+
+      let nextWorkout = updateTierStructure(prev, sourceTier, nextSourceStructure);
+      nextWorkout = updateTierStructure(nextWorkout, targetTier, nextTargetStructure);
+      return nextWorkout;
+    });
+    setIsDirty(true);
+  };
+
+  const handleCopyBlock = (sourceTier: TierLabel, blockIndex: number, targetTiers: TierLabel[]) => {
+    if (!ensureDraftForBuilder()) return;
+
+    setCurrentWorkout((prev) => {
+      const sourceVariant = normalizeTierVariant(prev, sourceTier);
+      const sourceBlock = sourceVariant.structure[blockIndex];
+      if (!sourceBlock) return prev;
+
+      let nextWorkout = { ...prev };
+
+      for (const targetTier of targetTiers) {
+        if (targetTier === sourceTier) continue;
+        const targetVariant = normalizeTierVariant(nextWorkout, targetTier);
+        const nextStructure = [...targetVariant.structure];
+        if (blockIndex < nextStructure.length) {
+          nextStructure[blockIndex] = sourceBlock;
+        } else {
+          nextStructure.push(sourceBlock);
+        }
+        nextWorkout = updateTierStructure(nextWorkout, targetTier, nextStructure);
+      }
+
+      return nextWorkout;
+    });
+    setIsDirty(true);
+  };
+
+  const handleCopyTier = (sourceTier: TierLabel, targetTiers: TierLabel[]) => {
+    if (!ensureDraftForBuilder()) return;
+
+    setCurrentWorkout((prev) => {
+      const sourceVariant = normalizeTierVariant(prev, sourceTier);
+      let nextWorkout = { ...prev };
+
+      for (const targetTier of targetTiers) {
+        if (targetTier === sourceTier) continue;
+        nextWorkout = updateTierStructure(nextWorkout, targetTier, [...sourceVariant.structure]);
+      }
+
+      return nextWorkout;
+    });
+    setIsDirty(true);
+  };
+
+  const handleSaveDraft = async () => {
+    if (mode !== "builder") return;
+    if (!ensureDraftForBuilder()) return;
+    try {
+      const response = await fetch("/api/workouts/upsert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...currentWorkout, status: "draft", version: 0 }),
+      });
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status}`);
+      }
+      await refreshWorkouts();
+      setIsDirty(false);
+    } catch (error) {
+      console.error("Failed to save workout draft.", error);
+    }
+  };
+
+  const handlePublish = () => {
+    if (mode !== "builder") return;
+    if (!ensureDraftForBuilder()) return;
+    setShowPublishOverlay(true);
+  };
+
+  const confirmPublish = async () => {
+    if (!ensureDraftForBuilder()) return;
+    try {
+      const response = await fetch("/api/workouts/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workout: currentWorkout }),
+      });
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status}`);
+      }
+      const published = (await response.json()) as Workout;
+      await refreshWorkouts();
+      setPreviewWorkout(published);
+      setMode("preview");
+      setIsDirty(false);
+    } catch (error) {
+      console.error("Failed to publish workout.", error);
+    } finally {
+      setShowPublishOverlay(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      if (mode === "builder") {
+        await fetch(`/api/workouts/draft/${currentWorkout.workoutId}`, { method: "DELETE" });
+        await refreshWorkouts();
+        setCurrentWorkout(createDraftWorkout());
+        setIsDirty(false);
+        setMode("library");
+        return;
+      }
+
+      if (mode === "preview" && previewWorkout) {
+        await fetch("/api/workouts/archive", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workoutId: previewWorkout.workoutId, version: previewWorkout.version }),
+        });
+        await refreshWorkouts();
+        setPreviewWorkout(null);
+        setMode("library");
+      }
+    } catch {
+      return;
+    }
+  };
+
+  const handleLibrary = () => {
+    if (!confirmDiscardIfDirty()) return;
+    setMode("library");
+  };
+
+  const handleDuplicate = async () => {
+    const source = mode === "preview" ? previewWorkout : currentWorkout;
+    if (!source) return;
+    const duplicate: Workout = {
+      ...source,
+      workoutId: createWorkoutId(),
+      status: "draft",
+      version: 0,
+      publishedAt: null,
+    };
+    setCurrentWorkout(duplicate);
+    setMode("builder");
+    setIsDirty(true);
+    await fetch("/api/workouts/upsert", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(duplicate),
+    });
+    await refreshWorkouts();
+  };
+
+  const handleEditAsDraft = async () => {
+    if (!previewWorkout) return;
+    if (!confirmDiscardIfDirty()) return;
+    const draft: Workout = {
+      ...previewWorkout,
+      status: "draft",
+      version: 0,
+      publishedAt: null,
+    };
+    await fetch("/api/workouts/upsert", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(draft),
+    });
+    await refreshWorkouts();
+    setCurrentWorkout(draft);
+    setMode("builder");
+    setIsDirty(true);
+  };
+
+  const handleDuplicateFromLibrary = async (workout: Workout) => {
+    const duplicate: Workout = {
+      ...workout,
+      workoutId: createWorkoutId(),
+      status: "draft",
+      version: 0,
+      publishedAt: null,
+    };
+    await fetch("/api/workouts/upsert", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(duplicate),
+    });
+    await refreshWorkouts();
+    setCurrentWorkout(duplicate);
+    setMode("builder");
+    setIsDirty(true);
+  };
+
+  const handleEditAsDraftFromLibrary = async (workout: Workout) => {
+    const draft: Workout = {
+      ...workout,
+      status: "draft",
+      version: 0,
+      publishedAt: null,
+    };
+    await fetch("/api/workouts/upsert", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(draft),
+    });
+    await refreshWorkouts();
+    setCurrentWorkout(draft);
+    setMode("builder");
+    setIsDirty(true);
+  };
+
+  const handleArchiveFromLibrary = async (workout: Workout) => {
+    await fetch("/api/workouts/archive", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workoutId: workout.workoutId, version: workout.version }),
+    });
+    await refreshWorkouts();
+  };
+
+  const handleSelectDraft = (workout: Workout) => {
+    if (!confirmDiscardIfDirty()) return;
+    setCurrentWorkout(workout);
+    setMode("builder");
+    setIsDirty(false);
+  };
+
+  const handleSelectPublished = (workout: Workout) => {
+    if (!confirmDiscardIfDirty()) return;
+    setPreviewWorkout(workout);
+    setMode("preview");
+    setIsDirty(false);
+  };
+
+  const workoutView = useMemo(() => workoutToView(mode === "preview" && previewWorkout ? previewWorkout : currentWorkout), [
+    mode,
+    previewWorkout,
+    currentWorkout,
+  ]);
+
+  const namesByTier = useMemo(() => {
+    return generateWorkoutNameByTier(workoutView.tiers, effortLookup);
+  }, [workoutView.tiers, effortLookup]);
+
+  const libraryGroups = useMemo(() => groupWorkouts(workouts), [workouts]);
+
+  if (mode === "builder" && currentWorkout.status !== "draft") {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "#0d1117",
+          color: "#f5f5f5",
+          padding: "24px",
+        }}
+      >
+        <div style={{ maxWidth: "480px", textAlign: "center", display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div style={{ fontSize: "16px", fontWeight: 600 }}>
+            Builder blocked: non-draft workout detected.
+          </div>
+          <div style={{ fontSize: "12px", color: "#c9c9c9" }}>
+            Published workouts must be forked into a draft before editing.
+          </div>
+          <button
+            type="button"
+            onClick={handleEditAsDraft}
+            style={previewActionStyle}
+          >
+            Fork as Draft
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
       style={{
-        padding: "1rem",
-        border: "1px solid #d1d5db",
-        borderRadius: "4px",
-        marginBottom: "1rem",
-        backgroundColor: "white",
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        backgroundColor: "#0d1117",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem" }}>
-        <h4 style={{ margin: 0 }}>Interval {index + 1}</h4>
-        {isDraft && (
-          <button
-            onClick={onRemove}
+      <ActionBar
+        onLibrary={handleLibrary}
+        onDuplicate={handleDuplicate}
+        onSaveDraft={handleSaveDraft}
+        onPublish={handlePublish}
+        onDelete={handleDelete}
+      />
+
+      {mode === "library" ? (
+        <div style={{ padding: "24px", color: "#f5f5f5" }}>
+          <div style={{ fontSize: "16px", fontWeight: 600, marginBottom: "12px" }}>Workout Library</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "12px" }}>
+            {libraryGroups.map((group) => {
+              const draft = group.draft;
+              const published = group.published[0];
+              const archived = group.archived[0];
+              const display = draft ?? published ?? archived;
+              const status = draft ? "Draft" : published ? "Published" : "Archived";
+              const preview = display ? workoutToView(display) : null;
+              const previewNames = preview ? generateWorkoutNameByTier(preview.tiers, effortLookup) : null;
+              return (
+                <div key={group.workoutId} style={libraryCardStyle}>
+                  <div style={{ fontSize: "12px", fontWeight: 700 }}>{display?.name ?? "Untitled Workout"}</div>
+                  <div style={{ fontSize: "11px", color: "#c9c9c9" }}>{status}</div>
+                  <div style={{ fontSize: "10px", color: "#8f8f8f" }}>Latest v{display?.version ?? 0}</div>
+                  {previewNames && (
+                    <div style={{ fontSize: "10px", color: "#b5b5b5", display: "flex", flexDirection: "column", gap: "4px", marginTop: "8px" }}>
+                      {Object.entries(previewNames).map(([tier, name]) => (
+                        <div key={tier}>
+                          <strong>{tier}:</strong> {name}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(() => {
+                    const duplicateSource = display;
+                    return duplicateSource ? (
+                      <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
+                        {published && (
+                          <button type="button" onClick={() => handleEditAsDraftFromLibrary(published)} style={libraryActionStyle}>
+                            Edit as Draft
+                          </button>
+                        )}
+                        {published && (
+                          <button type="button" onClick={() => handleArchiveFromLibrary(published)} style={libraryActionStyle}>
+                            Archive
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDuplicateFromLibrary(duplicateSource)}
+                          style={libraryActionStyle}
+                        >
+                          Duplicate
+                        </button>
+                      </div>
+                    ) : null;
+                  })()}
+                  <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
+                    {draft && (
+                      <button type="button" onClick={() => handleSelectDraft(draft)} style={libraryActionStyle}>
+                        Open Draft
+                      </button>
+                    )}
+                    {published && (
+                      <button type="button" onClick={() => handleSelectPublished(published)} style={libraryActionStyle}>
+                        Open Published
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flex: 1 }}>
+          {mode === "builder" && <BlockLibrarySidebar />}
+
+          <main
             style={{
-              padding: "0.25rem 0.5rem",
-              backgroundColor: "#dc3545",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontSize: "0.875rem",
+              flex: 1,
+              padding: "24px",
+              backgroundColor: "#0b0f17",
             }}
           >
-            Remove
-          </button>
-        )}
-      </div>
-
-      <div style={{ marginBottom: "1rem" }}>
-        <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem" }}>
-          Repetitions
-        </label>
-        <input
-          type="number"
-          min="1"
-          value={interval.reps}
-          onChange={(e) => onUpdate({ ...interval, reps: parseInt(e.target.value) || 1 })}
-          disabled={!isDraft}
-          style={{
-            width: "100px",
-            padding: "0.5rem",
-            border: "1px solid #d1d5db",
-            borderRadius: "4px",
-            backgroundColor: isDraft ? "white" : "#f3f4f6",
-          }}
-        />
-      </div>
-
-      {/* Work Section */}
-      <div
-        style={{
-          padding: "1rem",
-          backgroundColor: "#f0fdf4",
-          border: "1px solid #bbf7d0",
-          borderRadius: "4px",
-          marginBottom: "1rem",
-        }}
-      >
-        <h5 style={{ marginTop: 0, marginBottom: "0.75rem", fontSize: "0.875rem" }}>Work</h5>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.5rem", marginBottom: "0.5rem" }}>
-          <div>
-            <label style={{ display: "block", marginBottom: "0.25rem", fontSize: "0.75rem" }}>
-              Duration <span style={{ color: "#dc2626" }}>*</span>
-            </label>
-            <input
-              type="text"
-              value={interval.work.duration}
-              onChange={(e) =>
-                onUpdate({
-                  ...interval,
-                  work: { ...interval.work, duration: e.target.value },
-                })
-              }
-              disabled={!isDraft}
-              placeholder="15min"
+            <div
               style={{
-                width: "100%",
-                padding: "0.5rem",
-                border: "1px solid #d1d5db",
-                borderRadius: "4px",
-                fontSize: "0.875rem",
-                backgroundColor: isDraft ? "white" : "#f3f4f6",
-              }}
-            />
-          </div>
-
-          <div>
-            <label style={{ display: "block", marginBottom: "0.25rem", fontSize: "0.75rem" }}>
-              Target Type
-            </label>
-            <select
-              value={interval.work.target.type}
-              onChange={(e) =>
-                onUpdate({
-                  ...interval,
-                  work: {
-                    ...interval.work,
-                    target: { ...interval.work.target, type: e.target.value as TargetType },
-                  },
-                })
-              }
-              disabled={!isDraft}
-              style={{
-                width: "100%",
-                padding: "0.5rem",
-                border: "1px solid #d1d5db",
-                borderRadius: "4px",
-                fontSize: "0.875rem",
-                backgroundColor: isDraft ? "white" : "#f3f4f6",
+                border: "1px solid #2a2f3a",
+                borderRadius: "16px",
+                padding: "20px",
+                backgroundColor: "#0f1522",
+                minHeight: "100%",
+                display: "flex",
+                flexDirection: "column",
+                gap: "16px",
               }}
             >
-              <option value="pace">Pace</option>
-              <option value="hr">Heart Rate</option>
-              <option value="power">Power</option>
-            </select>
-          </div>
+              {mode === "preview" && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "10px 12px",
+                    borderRadius: "10px",
+                    border: "1px solid #2a2f3a",
+                    backgroundColor: "#101522",
+                    color: "#f5f5f5",
+                    fontSize: "12px",
+                  }}
+                >
+                  <div>Preview mode: published workout</div>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button type="button" onClick={handleEditAsDraft} style={previewActionStyle}>
+                      Edit as Draft
+                    </button>
+                    <button type="button" onClick={handleDuplicate} style={previewActionStyle}>
+                      Duplicate as New
+                    </button>
+                  </div>
+                </div>
+              )}
 
-          <div>
-            <label style={{ display: "block", marginBottom: "0.25rem", fontSize: "0.75rem" }}>
-              Zone <span style={{ color: "#dc2626" }}>*</span>
-            </label>
-            <input
-              type="text"
-              value={interval.work.target.zone}
-              onChange={(e) =>
-                onUpdate({
-                  ...interval,
-                  work: {
-                    ...interval.work,
-                    target: { ...interval.work.target, zone: e.target.value },
-                  },
-                })
-              }
-              disabled={!isDraft}
-              placeholder="Z4"
-              style={{
-                width: "100%",
-                padding: "0.5rem",
-                border: "1px solid #d1d5db",
-                borderRadius: "4px",
-                fontSize: "0.875rem",
-                backgroundColor: isDraft ? "white" : "#f3f4f6",
-              }}
-            />
-          </div>
+              <WorkoutMetadata
+                name={workoutView.name}
+                description={workoutView.description}
+                tags={workoutView.tags}
+                isLocked={isLocked}
+                onNameChange={(value) => {
+                  if (!ensureDraftForBuilder()) return;
+                  setCurrentWorkout((prev) => ({ ...prev, name: value }));
+                  setIsDirty(true);
+                }}
+                onDescriptionChange={(value) => {
+                  if (!ensureDraftForBuilder()) return;
+                  setCurrentWorkout((prev) => ({ ...prev, description: value }));
+                  setIsDirty(true);
+                }}
+                onTagsChange={(value) => {
+                  if (!ensureDraftForBuilder()) return;
+                  const trimmed = value.trim();
+                  const nextTags = trimmed == "" ? [] : value.split(",").map((tag) => tag.trim());
+                  setCurrentWorkout((prev) => ({ ...prev, focus: nextTags }));
+                  setIsDirty(true);
+                }}
+              />
+
+              <WorkoutChart
+                draft={workoutView}
+                effortLookup={effortLookup}
+                showXXL={false}
+              />
+              <TierColumns
+                showXXL={false}
+                tierBlocks={workoutView.tiers}
+                effortLookup={effortLookup}
+                availableEffortBlocks={effortBlocks}
+                onDropEffortBlock={handleDropEffortBlock}
+                onDeleteBlock={handleDeleteBlock}
+                onUpdateBlock={handleUpdateBlock}
+                onReorderBlocks={handleReorderBlocks}
+                onMoveBlocks={handleMoveBlocks}
+                onCopyBlock={handleCopyBlock}
+                onCopyTier={handleCopyTier}
+                isLocked={isLocked}
+              />
+            </div>
+          </main>
+
+          <SummarySidebar draft={workoutView} effortLookup={effortLookup} />
         </div>
-
-        <div>
-          <label style={{ display: "block", marginBottom: "0.25rem", fontSize: "0.75rem" }}>
-            Cues (one per line)
-          </label>
-          <textarea
-            value={interval.work.cues.join("\n")}
-            onChange={(e) => updateWorkCues(e.target.value)}
-            disabled={!isDraft}
-            placeholder="Focus on form&#10;Keep cadence steady"
-            style={{
-              width: "100%",
-              padding: "0.5rem",
-              border: "1px solid #d1d5db",
-              borderRadius: "4px",
-              minHeight: "60px",
-              fontSize: "0.875rem",
-              backgroundColor: isDraft ? "white" : "#f3f4f6",
-            }}
-          />
-        </div>
-      </div>
-
-      {/* Rest Section */}
-      {isDraft && !showRest && (
-        <button
-          onClick={toggleRest}
-          style={{
-            padding: "0.5rem 1rem",
-            backgroundColor: "#6c757d",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: "pointer",
-            fontSize: "0.875rem",
-          }}
-        >
-          + Add Rest Period
-        </button>
       )}
 
-      {showRest && interval.rest && (
+      {showPublishOverlay && (
         <div
           style={{
-            padding: "1rem",
-            backgroundColor: "#fef3c7",
-            border: "1px solid #fde047",
-            borderRadius: "4px",
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(4, 8, 16, 0.75)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "24px",
+            zIndex: 2000,
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.75rem" }}>
-            <h5 style={{ marginTop: 0, marginBottom: 0, fontSize: "0.875rem" }}>Rest</h5>
-            {isDraft && (
-              <button
-                onClick={toggleRest}
-                style={{
-                  padding: "0.25rem 0.5rem",
-                  backgroundColor: "#dc3545",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
-                  cursor: "pointer",
-                  fontSize: "0.75rem",
-                }}
-              >
-                Remove Rest
+          <div
+            style={{
+              width: "100%",
+              maxWidth: "520px",
+              backgroundColor: "#0f1522",
+              borderRadius: "16px",
+              border: "1px solid #2a2f3a",
+              padding: "20px",
+              color: "#f5f5f5",
+              display: "flex",
+              flexDirection: "column",
+              gap: "12px",
+            }}
+          >
+            <div style={{ fontSize: "16px", fontWeight: 700 }}>Publish Workout</div>
+            <div style={{ fontSize: "12px", color: "#c9c9c9" }}>Confirm this draft is ready to publish.</div>
+            <div style={{ fontSize: "12px" }}>
+              <div><strong>Name:</strong> {currentWorkout.name ?? "Untitled Workout"}</div>
+              <div><strong>Tags:</strong> {currentWorkout.focus.length > 0 ? currentWorkout.focus.join(", ") : "None"}</div>
+              <div><strong>Description:</strong> {currentWorkout.description ?? ""}</div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {Object.entries(namesByTier).map(([tier, name]) => (
+                <div key={tier} style={{ fontSize: "12px" }}>
+                  <strong>{tier}:</strong> {name}
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+              <button type="button" onClick={() => setShowPublishOverlay(false)} style={previewActionStyle}>
+                Cancel
               </button>
-            )}
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.5rem", marginBottom: "0.5rem" }}>
-            <div>
-              <label style={{ display: "block", marginBottom: "0.25rem", fontSize: "0.75rem" }}>
-                Duration
-              </label>
-              <input
-                type="text"
-                value={interval.rest.duration}
-                onChange={(e) =>
-                  onUpdate({
-                    ...interval,
-                    rest: interval.rest ? { ...interval.rest, duration: e.target.value } : null,
-                  })
-                }
-                disabled={!isDraft}
-                placeholder="3min"
-                style={{
-                  width: "100%",
-                  padding: "0.5rem",
-                  border: "1px solid #d1d5db",
-                  borderRadius: "4px",
-                  fontSize: "0.875rem",
-                  backgroundColor: isDraft ? "white" : "#f3f4f6",
-                }}
-              />
+              <button type="button" onClick={confirmPublish} style={previewActionStyle}>
+                Confirm Publish
+              </button>
             </div>
-
-            <div>
-              <label style={{ display: "block", marginBottom: "0.25rem", fontSize: "0.75rem" }}>
-                Target Type
-              </label>
-              <select
-                value={interval.rest.target.type}
-                onChange={(e) =>
-                  onUpdate({
-                    ...interval,
-                    rest: interval.rest
-                      ? {
-                          ...interval.rest,
-                          target: { ...interval.rest.target, type: e.target.value as TargetType },
-                        }
-                      : null,
-                  })
-                }
-                disabled={!isDraft}
-                style={{
-                  width: "100%",
-                  padding: "0.5rem",
-                  border: "1px solid #d1d5db",
-                  borderRadius: "4px",
-                  fontSize: "0.875rem",
-                  backgroundColor: isDraft ? "white" : "#f3f4f6",
-                }}
-              >
-                <option value="pace">Pace</option>
-                <option value="hr">Heart Rate</option>
-                <option value="power">Power</option>
-              </select>
-            </div>
-
-            <div>
-              <label style={{ display: "block", marginBottom: "0.25rem", fontSize: "0.75rem" }}>
-                Zone
-              </label>
-              <input
-                type="text"
-                value={interval.rest.target.zone}
-                onChange={(e) =>
-                  onUpdate({
-                    ...interval,
-                    rest: interval.rest
-                      ? {
-                          ...interval.rest,
-                          target: { ...interval.rest.target, zone: e.target.value },
-                        }
-                      : null,
-                  })
-                }
-                disabled={!isDraft}
-                placeholder="Z2"
-                style={{
-                  width: "100%",
-                  padding: "0.5rem",
-                  border: "1px solid #d1d5db",
-                  borderRadius: "4px",
-                  fontSize: "0.875rem",
-                  backgroundColor: isDraft ? "white" : "#f3f4f6",
-                }}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label style={{ display: "block", marginBottom: "0.25rem", fontSize: "0.75rem" }}>
-              Cues (one per line)
-            </label>
-            <textarea
-              value={interval.rest.cues.join("\n")}
-              onChange={(e) => updateRestCues(e.target.value)}
-              disabled={!isDraft}
-              placeholder="Active recovery&#10;Stay loose"
-              style={{
-                width: "100%",
-                padding: "0.5rem",
-                border: "1px solid #d1d5db",
-                borderRadius: "4px",
-                minHeight: "60px",
-                fontSize: "0.875rem",
-                backgroundColor: isDraft ? "white" : "#f3f4f6",
-              }}
-            />
           </div>
         </div>
       )}
     </div>
   );
 }
+
+const libraryCardStyle: React.CSSProperties = {
+  borderRadius: "12px",
+  border: "1px solid #2a2f3a",
+  backgroundColor: "#0f1522",
+  padding: "14px",
+  textAlign: "left",
+  display: "flex",
+  flexDirection: "column",
+  gap: "6px",
+};
+
+const libraryActionStyle: React.CSSProperties = {
+  padding: "4px 8px",
+  borderRadius: "6px",
+  border: "1px solid #3a3a3a",
+  backgroundColor: "transparent",
+  color: "#f5f5f5",
+  fontSize: "10px",
+  cursor: "pointer",
+};
+
+const previewActionStyle: React.CSSProperties = {
+  padding: "6px 10px",
+  borderRadius: "6px",
+  border: "1px solid #3a3a3a",
+  backgroundColor: "#101522",
+  color: "#f5f5f5",
+  fontSize: "12px",
+  cursor: "pointer",
+};

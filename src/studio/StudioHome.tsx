@@ -7,6 +7,8 @@
         <li><a href="/studio/routes">Route Manager</a></li>
         <li><a href="/studio/events">Event Builder</a></li>
         <li><a href="/studio/seasons">Season Builder</a></li>
+        <li><a href="/studio/roster">Roster Builder</a></li>
+        <li><a href="/studio/challenges">Challenge Builder</a></li>
       </ul>
     </div>
   );

@@ -152,11 +152,11 @@ export default function ChallengeBuilder() {
   };
 
   return (
-    <div style={{ padding: "2rem", display: "grid", gap: "2rem" }}>
+    <div style={{ padding: "2rem", display: "grid", gap: "2rem", backgroundColor: "#0a0e14", minHeight: "100%" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
-          <h2 style={{ marginBottom: "0.35rem" }}>Challenges</h2>
-          <div style={{ color: "#6b7280" }}>Keep challenges cultural and low pressure.</div>
+          <h2 style={{ marginBottom: "0.35rem", color: "#f5f5f5" }}>Challenges</h2>
+          <div style={{ color: "#999999" }}>Keep challenges cultural and low pressure.</div>
         </div>
         <div style={{ display: "flex", gap: "0.75rem" }}>
           <button
@@ -176,8 +176,9 @@ export default function ChallengeBuilder() {
             onClick={() => exportJson(CHALLENGES_FILE, challenges)}
             style={{
               padding: "0.5rem 1rem",
-              backgroundColor: "#f3f4f6",
-              border: "1px solid #d1d5db",
+              backgroundColor: "#1a1a1a",
+              color: "#f5f5f5",
+              border: "1px solid #3a3a3a",
               borderRadius: "4px",
               cursor: "pointer",
             }}
@@ -191,10 +192,10 @@ export default function ChallengeBuilder() {
         <div
           style={{
             padding: "0.75rem",
-            backgroundColor: "#ecfdf3",
-            border: "1px solid #bbf7d0",
+            backgroundColor: "#1a2e22",
+            border: "1px solid #16a34a",
             borderRadius: "4px",
-            color: "#166534",
+            color: "#4ade80",
           }}
         >
           {message}
@@ -204,10 +205,10 @@ export default function ChallengeBuilder() {
         <div
           style={{
             padding: "0.75rem",
-            backgroundColor: "#fee2e2",
-            border: "1px solid #fecaca",
+            backgroundColor: "#2a1a1a",
+            border: "1px solid #ff5a5a",
             borderRadius: "4px",
-            color: "#991b1b",
+            color: "#ff9999",
           }}
         >
           {error}
@@ -223,9 +224,9 @@ export default function ChallengeBuilder() {
                 flex: 1,
                 padding: "0.4rem",
                 borderRadius: "4px",
-                border: "1px solid #d1d5db",
-                backgroundColor: filter === "active" ? "#111827" : "#f9fafb",
-                color: filter === "active" ? "white" : "#111827",
+                border: "1px solid #3a3a3a",
+                backgroundColor: filter === "active" ? "#111827" : "#1a1a1a",
+                color: filter === "active" ? "white" : "#f5f5f5",
               }}
             >
               Active
@@ -236,9 +237,9 @@ export default function ChallengeBuilder() {
                 flex: 1,
                 padding: "0.4rem",
                 borderRadius: "4px",
-                border: "1px solid #d1d5db",
-                backgroundColor: filter === "archived" ? "#111827" : "#f9fafb",
-                color: filter === "archived" ? "white" : "#111827",
+                border: "1px solid #3a3a3a",
+                backgroundColor: filter === "archived" ? "#111827" : "#1a1a1a",
+                color: filter === "archived" ? "white" : "#f5f5f5",
               }}
             >
               Archived
@@ -252,10 +253,10 @@ export default function ChallengeBuilder() {
                 <div
                   key={challenge.id}
                   style={{
-                    border: isActive ? "2px solid #111827" : "1px solid #e5e7eb",
+                    border: isActive ? "2px solid #2563eb" : "1px solid #2a2a2a",
                     borderRadius: "6px",
                     padding: "0.75rem",
-                    backgroundColor: isActive ? "#f3f4f6" : "white",
+                    backgroundColor: isActive ? "#1a2332" : "#1a1a1a",
                   }}
                 >
                   <button
@@ -269,12 +270,12 @@ export default function ChallengeBuilder() {
                       cursor: "pointer",
                     }}
                   >
-                    <div style={{ fontWeight: 600 }}>{challenge.name}</div>
-                    <div style={{ fontSize: "0.8rem", color: "#6b7280" }}>
+                    <div style={{ fontWeight: 600, color: "#f5f5f5" }}>{challenge.name}</div>
+                    <div style={{ fontSize: "0.8rem", color: "#999999" }}>
                       {challenge.intent}
                     </div>
                   </button>
-                  <label style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem" }}>
+                  <label style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem", color: "#f5f5f5" }}>
                     <input
                       type="checkbox"
                       checked={challenge.status === "active"}
@@ -292,18 +293,18 @@ export default function ChallengeBuilder() {
           {draft ? (
             <div
               style={{
-                border: "1px solid #e5e7eb",
+                border: "1px solid #2a2a2a",
                 borderRadius: "8px",
                 padding: "1.5rem",
-                backgroundColor: "white",
+                backgroundColor: "#1a1a1a",
                 display: "grid",
                 gap: "1rem",
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <h3 style={{ margin: 0 }}>{draft.name || "New Challenge"}</h3>
+                <h3 style={{ margin: 0, color: "#f5f5f5" }}>{draft.name || "New Challenge"}</h3>
                 <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                  {dirty && <span style={{ color: "#dc2626" }}>Unsaved</span>}
+                  {dirty && <span style={{ color: "#ff9999" }}>Unsaved</span>}
                   <button
                     onClick={handleSave}
                     disabled={isSaving}
@@ -322,59 +323,69 @@ export default function ChallengeBuilder() {
               </div>
 
               <div style={{ display: "grid", gap: "0.5rem" }}>
-                <label style={{ fontSize: "0.75rem", color: "#6b7280" }}>Challenge ID</label>
+                <label style={{ fontSize: "0.75rem", color: "#999999" }}>Challenge ID</label>
                 <input
                   value={draft.id}
                   onChange={(event) => updateDraft({ id: event.target.value })}
                   style={{
                     padding: "0.5rem",
                     borderRadius: "4px",
-                    border: "1px solid #d1d5db",
+                    border: "1px solid #2b2b2b",
+                    backgroundColor: "#0b0b0b",
+                    color: "#f5f5f5",
                   }}
                 />
               </div>
               <div style={{ display: "grid", gap: "0.5rem" }}>
-                <label style={{ fontSize: "0.75rem", color: "#6b7280" }}>Name</label>
+                <label style={{ fontSize: "0.75rem", color: "#999999" }}>Name</label>
                 <input
                   value={draft.name}
                   onChange={(event) => updateDraft({ name: event.target.value })}
                   style={{
                     padding: "0.5rem",
                     borderRadius: "4px",
-                    border: "1px solid #d1d5db",
+                    border: "1px solid #2b2b2b",
+                    backgroundColor: "#0b0b0b",
+                    color: "#f5f5f5",
                   }}
                 />
               </div>
               <div style={{ display: "grid", gap: "0.5rem" }}>
-                <label style={{ fontSize: "0.75rem", color: "#6b7280" }}>Description</label>
+                <label style={{ fontSize: "0.75rem", color: "#999999" }}>Description</label>
                 <textarea
                   value={draft.description}
                   onChange={(event) => updateDraft({ description: event.target.value })}
                   rows={2}
                   style={{
+                    width: "100%",
                     padding: "0.5rem",
                     borderRadius: "4px",
-                    border: "1px solid #d1d5db",
+                    border: "1px solid #2b2b2b",
+                    backgroundColor: "#0b0b0b",
+                    color: "#f5f5f5",
                   }}
                 />
               </div>
               <div style={{ display: "grid", gap: "0.5rem" }}>
-                <label style={{ fontSize: "0.75rem", color: "#6b7280" }}>Intent</label>
+                <label style={{ fontSize: "0.75rem", color: "#999999" }}>Intent</label>
                 <textarea
                   value={draft.intent}
                   onChange={(event) => updateDraft({ intent: event.target.value })}
                   rows={2}
                   style={{
+                    width: "100%",
                     padding: "0.5rem",
                     borderRadius: "4px",
-                    border: "1px solid #d1d5db",
+                    border: "1px solid #2b2b2b",
+                    backgroundColor: "#0b0b0b",
+                    color: "#f5f5f5",
                   }}
                 />
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
                 <div>
-                  <label style={{ fontSize: "0.75rem", color: "#6b7280" }}>Start</label>
+                  <label style={{ fontSize: "0.75rem", color: "#999999" }}>Start</label>
                   <div style={{ display: "flex", gap: "0.5rem" }}>
                     <select
                       value={draft.startRef.type}
@@ -415,7 +426,7 @@ export default function ChallengeBuilder() {
                 </div>
 
                 <div>
-                  <label style={{ fontSize: "0.75rem", color: "#6b7280" }}>End</label>
+                  <label style={{ fontSize: "0.75rem", color: "#999999" }}>End</label>
                   <div style={{ display: "flex", gap: "0.5rem" }}>
                     <select
                       value={draft.endRef.type}
@@ -457,7 +468,7 @@ export default function ChallengeBuilder() {
               </div>
 
               <div>
-                <label style={{ fontSize: "0.75rem", color: "#6b7280" }}>Rules</label>
+                <label style={{ fontSize: "0.75rem", color: "#999999" }}>Rules</label>
                 <textarea
                   value={draft.rules}
                   onChange={(event) => updateDraft({ rules: event.target.value })}
@@ -467,16 +478,18 @@ export default function ChallengeBuilder() {
                     width: "100%",
                     padding: "0.75rem",
                     borderRadius: "4px",
-                    border: "1px solid #d1d5db",
+                    border: "1px solid #2b2b2b",
+                    backgroundColor: "#0b0b0b",
+                    color: "#f5f5f5",
                   }}
                 />
-                <div style={{ fontSize: "0.75rem", color: "#6b7280", marginTop: "0.25rem" }}>
+                <div style={{ fontSize: "0.75rem", color: "#999999", marginTop: "0.25rem" }}>
                   Write rules in plain language. No scoring.
                 </div>
               </div>
             </div>
           ) : (
-            <div>Select a challenge to edit.</div>
+            <div style={{ color: "#999999" }}>Select a challenge to edit.</div>
           )}
         </section>
       </div>

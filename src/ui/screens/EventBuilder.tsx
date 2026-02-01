@@ -142,7 +142,7 @@ export default function EventBuilder() {
 
   if (isLoading) {
     return (
-      <div style={{ padding: "2rem" }}>
+      <div style={{ padding: "2rem", backgroundColor: "#0a0e14", minHeight: "100%", color: "#f5f5f5" }}>
         <div>Loading events...</div>
       </div>
     );
@@ -151,7 +151,7 @@ export default function EventBuilder() {
   // Editing form
   if (editingEvent) {
     return (
-      <div style={{ padding: "2rem", maxWidth: "900px", margin: "0 auto" }}>
+      <div style={{ padding: "2rem", maxWidth: "900px", margin: "0 auto", backgroundColor: "#0a0e14", minHeight: "100%" }}>
         <div
           style={{
             display: "flex",
@@ -160,7 +160,7 @@ export default function EventBuilder() {
             marginBottom: "1.5rem",
           }}
         >
-          <h2 style={{ margin: 0 }}>
+          <h2 style={{ margin: 0, color: "#f5f5f5" }}>
             {isCreating ? "Create New Event" : `Edit ${editingEvent.eventId}`}
           </h2>
           <div style={{ display: "flex", gap: "0.5rem" }}>
@@ -168,8 +168,9 @@ export default function EventBuilder() {
               onClick={handleCancelEdit}
               style={{
                 padding: "0.5rem 1rem",
-                backgroundColor: "#e5e7eb",
-                border: "1px solid #d1d5db",
+                backgroundColor: "#1a1a1a",
+                color: "#f5f5f5",
+                border: "1px solid #3a3a3a",
                 borderRadius: "4px",
                 cursor: "pointer",
               }}
@@ -197,9 +198,10 @@ export default function EventBuilder() {
             style={{
               marginBottom: "1rem",
               padding: "1rem",
-              backgroundColor: "#ffebee",
+              backgroundColor: "#2a1a1a",
               borderRadius: "4px",
-              color: "#c62828",
+              color: "#ff9999",
+              border: "1px solid #ff5a5a",
             }}
           >
             {error}
@@ -208,7 +210,7 @@ export default function EventBuilder() {
 
         <div style={{ display: "grid", gap: "1rem" }}>
           <div style={{ display: "grid", gap: "0.5rem" }}>
-            <label style={{ fontSize: "0.85rem", color: "#555" }}>Event ID</label>
+            <label style={{ fontSize: "0.85rem", color: "#999999" }}>Event ID</label>
             <input
               value={editingEvent.eventId}
               onChange={(e) =>
@@ -216,15 +218,17 @@ export default function EventBuilder() {
               }
               style={{
                 padding: "0.5rem",
-                border: "1px solid #ccc",
+                border: "1px solid #2b2b2b",
                 borderRadius: "4px",
+                backgroundColor: "#0b0b0b",
+                color: "#f5f5f5",
               }}
               placeholder="SUC-037"
             />
           </div>
 
           <div style={{ display: "grid", gap: "0.5rem" }}>
-            <label style={{ fontSize: "0.85rem", color: "#555" }}>Event Name</label>
+            <label style={{ fontSize: "0.85rem", color: "#999999" }}>Event Name</label>
             <input
               value={editingEvent.eventName}
               onChange={(e) =>
@@ -232,15 +236,17 @@ export default function EventBuilder() {
               }
               style={{
                 padding: "0.5rem",
-                border: "1px solid #ccc",
+                border: "1px solid #2b2b2b",
                 borderRadius: "4px",
+                backgroundColor: "#0b0b0b",
+                color: "#f5f5f5",
               }}
               placeholder="Sacramento Underground Cycling"
             />
           </div>
 
           <div style={{ display: "grid", gap: "0.5rem" }}>
-            <label style={{ fontSize: "0.85rem", color: "#555" }}>
+            <label style={{ fontSize: "0.85rem", color: "#999999" }}>
               Event Description
             </label>
             <textarea
@@ -253,8 +259,10 @@ export default function EventBuilder() {
               }
               style={{
                 padding: "0.5rem",
-                border: "1px solid #ccc",
+                border: "1px solid #2b2b2b",
                 borderRadius: "4px",
+                backgroundColor: "#0b0b0b",
+                color: "#f5f5f5",
                 minHeight: "100px",
               }}
               placeholder="Short description for the event"
@@ -263,7 +271,7 @@ export default function EventBuilder() {
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
             <div style={{ display: "grid", gap: "0.5rem" }}>
-              <label style={{ fontSize: "0.85rem", color: "#555" }}>Event Date</label>
+              <label style={{ fontSize: "0.85rem", color: "#999999" }}>Event Date</label>
               <input
                 value={editingEvent.eventDate || ""}
                 onChange={(e) =>
@@ -278,7 +286,7 @@ export default function EventBuilder() {
               />
             </div>
             <div style={{ display: "grid", gap: "0.5rem" }}>
-              <label style={{ fontSize: "0.85rem", color: "#555" }}>Event Time</label>
+              <label style={{ fontSize: "0.85rem", color: "#999999" }}>Event Time</label>
               <input
                 value={editingEvent.eventTime || ""}
                 onChange={(e) =>
@@ -295,7 +303,7 @@ export default function EventBuilder() {
           </div>
 
           <div style={{ display: "grid", gap: "0.5rem" }}>
-            <label style={{ fontSize: "0.85rem", color: "#555" }}>
+            <label style={{ fontSize: "0.85rem", color: "#999999" }}>
               Start Location Name
             </label>
             <input
@@ -308,15 +316,17 @@ export default function EventBuilder() {
               }
               style={{
                 padding: "0.5rem",
-                border: "1px solid #ccc",
+                border: "1px solid #2b2b2b",
                 borderRadius: "4px",
+                backgroundColor: "#0b0b0b",
+                color: "#f5f5f5",
               }}
               placeholder="Southside Park"
             />
           </div>
 
           <div style={{ display: "grid", gap: "0.5rem" }}>
-            <label style={{ fontSize: "0.85rem", color: "#555" }}>
+            <label style={{ fontSize: "0.85rem", color: "#999999" }}>
               Start Location URL
             </label>
             <input
@@ -329,15 +339,17 @@ export default function EventBuilder() {
               }
               style={{
                 padding: "0.5rem",
-                border: "1px solid #ccc",
+                border: "1px solid #2b2b2b",
                 borderRadius: "4px",
+                backgroundColor: "#0b0b0b",
+                color: "#f5f5f5",
               }}
               placeholder="https://maps.google.com/..."
             />
           </div>
 
           <div style={{ display: "grid", gap: "0.5rem" }}>
-            <label style={{ fontSize: "0.85rem", color: "#555" }}>
+            <label style={{ fontSize: "0.85rem", color: "#999999" }}>
               Route Groups
             </label>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
@@ -363,9 +375,9 @@ export default function EventBuilder() {
                       padding: "0.5rem 1rem",
                       fontSize: "0.875rem",
                       borderRadius: "4px",
-                      border: `1px solid ${isSelected ? "#4CAF50" : "#ccc"}`,
-                      backgroundColor: isSelected ? "#4CAF50" : "#fff",
-                      color: isSelected ? "#fff" : "#555",
+                      border: `1px solid ${isSelected ? "#16a34a" : "#3a3a3a"}`,
+                      backgroundColor: isSelected ? "#1a2e22" : "#1a1a1a",
+                      color: isSelected ? "#4ade80" : "#f5f5f5",
                       cursor: "pointer",
                     }}
                   >
@@ -382,7 +394,7 @@ export default function EventBuilder() {
 
   // List view
   return (
-    <div style={{ padding: "2rem" }}>
+    <div style={{ padding: "2rem", backgroundColor: "#0a0e14", minHeight: "100%" }}>
       <div
         style={{
           display: "flex",
@@ -391,13 +403,13 @@ export default function EventBuilder() {
           marginBottom: "1.5rem",
         }}
       >
-        <h2 style={{ margin: 0 }}>Event Builder</h2>
+        <h2 style={{ margin: 0, color: "#f5f5f5" }}>Event Builder</h2>
         <div style={{ display: "flex", gap: "0.5rem" }}>
           <button
             onClick={handleCreateNew}
             style={{
               padding: "0.5rem 1rem",
-              backgroundColor: "#4CAF50",
+              backgroundColor: "#16a34a",
               color: "white",
               border: "none",
               borderRadius: "4px",
@@ -430,9 +442,10 @@ export default function EventBuilder() {
           style={{
             marginBottom: "1rem",
             padding: "1rem",
-            backgroundColor: "#ffebee",
+            backgroundColor: "#2a1a1a",
             borderRadius: "4px",
-            color: "#c62828",
+            color: "#ff9999",
+            border: "1px solid #ff5a5a",
           }}
         >
           {error}
@@ -444,9 +457,10 @@ export default function EventBuilder() {
           style={{
             marginBottom: "1rem",
             padding: "1rem",
-            backgroundColor: "#e8f5e9",
+            backgroundColor: "#1a2e22",
             borderRadius: "4px",
-            color: "#2e7d32",
+            color: "#4ade80",
+            border: "1px solid #16a34a",
           }}
         >
           {success}
@@ -454,7 +468,7 @@ export default function EventBuilder() {
       )}
 
       {events.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "3rem", color: "#666" }}>
+        <div style={{ textAlign: "center", padding: "3rem", color: "#999999" }}>
           No events yet. Click "Create New Event" to get started.
         </div>
       ) : (
@@ -466,27 +480,27 @@ export default function EventBuilder() {
                 key={event.eventId}
                 style={{
                   padding: "1rem",
-                  border: "1px solid #ddd",
+                  border: "1px solid #2a2a2a",
                   borderRadius: "6px",
-                  backgroundColor: "#fff",
-                  borderLeft: `4px solid ${isSelected ? "#4CAF50" : "#ccc"}`,
+                  backgroundColor: "#1a1a1a",
+                  borderLeft: `4px solid ${isSelected ? "#16a34a" : "#3a3a3a"}`,
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: "600", fontSize: "1rem" }}>
+                    <div style={{ fontWeight: "600", fontSize: "1rem", color: "#f5f5f5" }}>
                       {event.eventId} - {event.eventName}
                     </div>
-                    <div style={{ fontSize: "0.875rem", color: "#666", marginTop: "0.25rem" }}>
+                    <div style={{ fontSize: "0.875rem", color: "#bfbfbf", marginTop: "0.25rem" }}>
                       {event.eventDescription}
                     </div>
                     {event.eventDate && (
-                      <div style={{ fontSize: "0.875rem", color: "#999", marginTop: "0.25rem" }}>
+                      <div style={{ fontSize: "0.875rem", color: "#999999", marginTop: "0.25rem" }}>
                         {event.eventDate} {event.eventTime && `at ${event.eventTime}`}
                       </div>
                     )}
                     {event.routeGroupIds.length > 0 && (
-                      <div style={{ fontSize: "0.875rem", color: "#999", marginTop: "0.25rem" }}>
+                      <div style={{ fontSize: "0.875rem", color: "#999999", marginTop: "0.25rem" }}>
                         Route Groups: {event.routeGroupIds.join(", ")}
                       </div>
                     )}
@@ -499,9 +513,9 @@ export default function EventBuilder() {
                         padding: "0.5rem 1rem",
                         fontSize: "0.75rem",
                         borderRadius: "4px",
-                        border: "1px solid #ccc",
-                        backgroundColor: isSelected ? "#4CAF50" : "#fff",
-                        color: isSelected ? "#fff" : "#555",
+                        border: `1px solid ${isSelected ? "#16a34a" : "#3a3a3a"}`,
+                        backgroundColor: isSelected ? "#1a2e22" : "#111111",
+                        color: isSelected ? "#4ade80" : "#f5f5f5",
                         cursor: "pointer",
                       }}
                     >
@@ -513,9 +527,9 @@ export default function EventBuilder() {
                         padding: "0.5rem 1rem",
                         fontSize: "0.75rem",
                         borderRadius: "4px",
-                        border: "1px solid #ccc",
-                        backgroundColor: "#fff",
-                        color: "#555",
+                        border: "1px solid #3a3a3a",
+                        backgroundColor: "#111111",
+                        color: "#f5f5f5",
                         cursor: "pointer",
                       }}
                     >
@@ -527,9 +541,9 @@ export default function EventBuilder() {
                         padding: "0.5rem 1rem",
                         fontSize: "0.75rem",
                         borderRadius: "4px",
-                        border: "1px solid #f44336",
-                        backgroundColor: "#fff",
-                        color: "#f44336",
+                        border: "1px solid #ff5a5a",
+                        backgroundColor: "#111111",
+                        color: "#ff5a5a",
                         cursor: "pointer",
                       }}
                     >

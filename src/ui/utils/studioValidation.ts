@@ -9,7 +9,7 @@ import type {
 
 const weekKeyPattern = /^\d{4}-\d{2}$/;
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-const emailPattern = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) {
@@ -107,35 +107,51 @@ export function assertWeeks(data: unknown): asserts data is Week[] {
 
 export function assertRoster(data: unknown): asserts data is RosterMember[] {
   assert(Array.isArray(data), "Roster must be an array.");
+
+  // ✅ EMPTY ROSTER IS VALID
+  if (data.length === 0) {
+    return;
+  }
+
   data.forEach((item, index) => {
     assert(typeof item === "object" && item !== null, `Roster[${index}] must be an object.`);
     const member = item as RosterMember;
+
     assertString(member.id, `Roster[${index}].id is required.`);
     assertString(member.name, `Roster[${index}].name is required.`);
     assertString(member.email, `Roster[${index}].email is required.`);
     assert(emailPattern.test(member.email), `Roster[${index}].email is invalid.`);
+
     assert(
       member.status === "active" || member.status === "paused" || member.status === "alumni",
       `Roster[${index}].status is invalid.`
     );
+
     assert(
-      member.tier === "MED" || member.tier === "LRG" || member.tier === "XL",
+      member.tier === "MED" || member.tier === "XL",
       `Roster[${index}].tier is invalid.`
     );
-    assertString(member.joinedDate, `Roster[${index}].joinedDate is required.`);
-    assert(datePattern.test(member.joinedDate), `Roster[${index}].joinedDate is invalid.`);
+
+    assert(typeof member.joinedDate === "string", `Roster[${index}].joinedDate is required.`);
+    if (member.joinedDate.trim().length > 0) {
+      assert(datePattern.test(member.joinedDate), `Roster[${index}].joinedDate is invalid.`);
+    }
+
     assertOptionalString(
       member.trainingGoal,
       `Roster[${index}].trainingGoal must be a string.`
     );
+
     assertOptionalString(
       member.weeklyMileageRange,
       `Roster[${index}].weeklyMileageRange must be a string.`
     );
+
     assert(
       typeof member.consent === "object" && member.consent !== null,
       `Roster[${index}].consent is required.`
     );
+
     const consent = member.consent as RosterMember["consent"];
     ["publicName", "publicStory", "publicPhotos", "publicMetrics"].forEach((key) => {
       assert(
@@ -151,33 +167,40 @@ export function assertChallenges(data: unknown): asserts data is Challenge[] {
   data.forEach((item, index) => {
     assert(typeof item === "object" && item !== null, `Challenge[${index}] must be an object.`);
     const challenge = item as Challenge;
+
     assertString(challenge.id, `Challenge[${index}].id is required.`);
     assertString(challenge.name, `Challenge[${index}].name is required.`);
     assertString(challenge.description, `Challenge[${index}].description is required.`);
     assertString(challenge.intent, `Challenge[${index}].intent is required.`);
+
     assert(
       challenge.startRef?.type === "week" || challenge.startRef?.type === "block",
       `Challenge[${index}].startRef.type is invalid.`
     );
     assertString(challenge.startRef.id, `Challenge[${index}].startRef.id is required.`);
+
     assert(
       challenge.endRef?.type === "week" || challenge.endRef?.type === "block",
       `Challenge[${index}].endRef.type is invalid.`
     );
     assertString(challenge.endRef.id, `Challenge[${index}].endRef.id is required.`);
+
     assertString(challenge.rules, `Challenge[${index}].rules is required.`);
+
     if (challenge.linkedWorkouts !== undefined) {
       assertStringArray(
         challenge.linkedWorkouts,
         `Challenge[${index}].linkedWorkouts must be an array.`
       );
     }
+
     if (challenge.linkedRoutes !== undefined) {
       assertStringArray(
         challenge.linkedRoutes,
         `Challenge[${index}].linkedRoutes must be an array.`
       );
     }
+
     assert(
       challenge.status === "active" || challenge.status === "archived",
       `Challenge[${index}].status is invalid.`

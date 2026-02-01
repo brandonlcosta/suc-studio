@@ -15,9 +15,9 @@ export default function RouteCard({ route, onLabelChange }: RouteCardProps) {
     <div
       style={{
         padding: "1rem",
-        border: "1px solid #ddd",
+        border: "1px solid var(--border-medium)",
         borderRadius: "6px",
-        backgroundColor: "#fff",
+        backgroundColor: "var(--overlay-dark)",
         borderLeft: `4px solid ${color}`,
       }}
     >
@@ -26,6 +26,7 @@ export default function RouteCard({ route, onLabelChange }: RouteCardProps) {
           fontWeight: "600",
           fontSize: "0.9rem",
           marginBottom: "0.75rem",
+          color: "var(--text-primary)",
         }}
       >
         {route.fileName}
@@ -61,9 +62,9 @@ export default function RouteCard({ route, onLabelChange }: RouteCardProps) {
                   padding: "0.25rem 0.5rem",
                   fontSize: "0.7rem",
                   borderRadius: "4px",
-                  border: `1px solid ${selected ? color : "#ccc"}`,
-                  backgroundColor: selected ? color : "#fff",
-                  color: selected ? "#0b0b0b" : "#555",
+                  border: `1px solid ${selected ? color : "var(--button-border)"}`,
+                  backgroundColor: selected ? color : "var(--button-bg)",
+                  color: selected ? "#0b0b0b" : "var(--text-secondary)",
                   cursor: "pointer",
                 }}
               >
@@ -76,11 +77,11 @@ export default function RouteCard({ route, onLabelChange }: RouteCardProps) {
 
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
         <div>
-          <div style={{ color: "#666", fontSize: "0.75rem" }}>Distance</div>
-          <div style={{ fontSize: "1rem", fontWeight: "500" }}>
+          <div style={{ color: "var(--text-secondary)", fontSize: "0.75rem" }}>Distance</div>
+          <div style={{ fontSize: "1rem", fontWeight: "500", color: "var(--text-primary)" }}>
             {route.distanceMi.toFixed(2)} mi
             <span
-              style={{ color: "#999", fontSize: "0.75rem", marginLeft: "0.5rem" }}
+              style={{ color: "var(--text-tertiary)", fontSize: "0.75rem", marginLeft: "0.5rem" }}
             >
               ({distanceKm.toFixed(2)} km)
             </span>
@@ -88,11 +89,11 @@ export default function RouteCard({ route, onLabelChange }: RouteCardProps) {
         </div>
 
         <div>
-          <div style={{ color: "#666", fontSize: "0.75rem" }}>Elevation</div>
-          <div style={{ fontSize: "1rem", fontWeight: "500" }}>
+          <div style={{ color: "var(--text-secondary)", fontSize: "0.75rem" }}>Elevation</div>
+          <div style={{ fontSize: "1rem", fontWeight: "500", color: "var(--text-primary)" }}>
             {route.elevationFt.toFixed(0)} ft
             <span
-              style={{ color: "#999", fontSize: "0.75rem", marginLeft: "0.5rem" }}
+              style={{ color: "var(--text-tertiary)", fontSize: "0.75rem", marginLeft: "0.5rem" }}
             >
               ({elevationM.toFixed(0)} m)
             </span>
@@ -100,8 +101,8 @@ export default function RouteCard({ route, onLabelChange }: RouteCardProps) {
         </div>
 
         <div>
-          <div style={{ color: "#666", fontSize: "0.75rem" }}>Points</div>
-          <div style={{ fontSize: "0.875rem" }}>
+          <div style={{ color: "var(--text-secondary)", fontSize: "0.75rem" }}>Points</div>
+          <div style={{ fontSize: "0.875rem", color: "var(--text-primary)" }}>
             {route.coords.length.toLocaleString()}
           </div>
         </div>

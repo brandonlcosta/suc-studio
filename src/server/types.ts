@@ -22,13 +22,53 @@ export interface RouteVariant {
   gpxContent: string;
 }
 
+export interface RoutePoiVariantPlacement {
+  lat: number;
+  lon: number;
+  distanceMi: number;
+  distanceM: number;
+  snapIndex: number;
+}
+
+export interface RoutePoi {
+  id: string;
+  title: string;
+  type: string;
+  notes?: string;
+  drop?: {
+    lat: number;
+    lon: number;
+  };
+  variants: Partial<Record<RouteLabel, RoutePoiVariantPlacement>>;
+}
+
+export interface RoutePoisDoc {
+  version?: number;
+  routeGroupId: string;
+  pois: RoutePoi[];
+}
+
+export interface RoutePoiSnapRequest {
+  poi: {
+    id: string;
+    title: string;
+    type: string;
+    notes?: string;
+  };
+  click: {
+    lat: number;
+    lon: number;
+  };
+  variants: RouteLabel[];
+}
+
 export interface SaveRouteGroupRequest {
   routeGroupId: string;
   name: string;
   location: string;
-  source: string;
-  notes: string;
-  variants: RouteVariant[];
+  source?: string;
+  notes?: string;
+  variants?: RouteVariant[];
 }
 
 export interface RouteGroupSummary {
@@ -63,10 +103,31 @@ export interface EventsSelection {
   selectedEventIds: string[];
 }
 
+// Roster types
+export type RosterStatus = "active" | "paused" | "alumni";
+export type RosterTier = "MED" | "LRG" | "XL";
+
+export interface RosterMember {
+  id: string;
+  name: string;
+  email: string;
+  status: RosterStatus;
+  tier: RosterTier;
+  joinedDate: string;
+  trainingGoal?: string;
+  weeklyMileageRange?: string;
+  consent: {
+    publicName: boolean;
+    publicStory: boolean;
+    publicPhotos: boolean;
+    publicMetrics: boolean;
+  };
+}
+
 // Workout types
 export type WorkoutStatus = "draft" | "published" | "archived";
 export type TargetType = "pace" | "hr" | "power";
-export type TierLabel = "MED" | "LRG" | "XL";
+export type TierLabel = "MED" | "LRG" | "XL" | "XXL";
 
 export interface IntervalTarget {
   type: TargetType;

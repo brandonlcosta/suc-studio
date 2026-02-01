@@ -21,11 +21,11 @@ export default function NavigationBar({ activeScreen, onNavigate }: NavigationBa
         display: "flex",
         gap: "0.5rem",
         padding: "1rem",
-        backgroundColor: "#111827",
-        borderBottom: "1px solid #374151",
+        backgroundColor: "var(--bg-secondary)",
+        borderBottom: "1px solid var(--border-medium)",
       }}
     >
-      <div style={{ color: "white", fontWeight: "700", marginRight: "1rem" }}>
+      <div style={{ color: "var(--text-primary)", fontWeight: "700", marginRight: "1rem" }}>
         SUC Studio
       </div>
 
@@ -37,14 +37,14 @@ export default function NavigationBar({ activeScreen, onNavigate }: NavigationBa
             onClick={() => onNavigate(screen.id)}
             style={{
               padding: "0.5rem 1rem",
-              backgroundColor: isActive ? "#374151" : "transparent",
-              color: isActive ? "white" : "#9CA3AF",
+              backgroundColor: isActive ? "var(--overlay-dark)" : "transparent",
+              color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
               border: "none",
               borderRadius: "4px",
               cursor: "pointer",
               fontSize: "0.875rem",
               fontWeight: isActive ? "600" : "400",
-              transition: "all 0.2s ease",
+              transition: "all 0.15s ease",
             }}
           >
             {screen.label}

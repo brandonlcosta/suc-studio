@@ -5,8 +5,21 @@ import {
   listRouteGroups,
   getRouteGroup,
   saveRouteGroup,
+  loadRoutePois,
+  saveRoutePois,
+  saveRouteVariant,
+  deleteRouteGroup,
+  deleteRouteVariant,
+  loadRouteVariantGpx,
 } from "../utils/sharedData.js";
-import type { SaveRouteGroupRequest, RouteMeta } from "../types.js";
+import { snapPointToVariants } from "../utils/routeSnapping.js";
+import type {
+  RouteLabel,
+  RoutePoi,
+  RoutePoiSnapRequest,
+  SaveRouteGroupRequest,
+  RouteMeta,
+} from "../types.js";
 
 const router = express.Router();
 
@@ -25,6 +38,18 @@ router.post("/import", upload.single("gpx"), (req, res) => {
 
     const xmlStr = req.file.buffer.toString("utf8");
     const fileName = req.file.originalname;
+
+    const baseName = fileName.replace(/\.[^/.]+$/, "");
+    const match = baseName.match(/^(.*?)-(MED|LRG|XL|XXL)$/i);
+    if (match && match[1]) {
+      const groupId = match[1];
+      const label = match[2].toUpperCase();
+      try {
+        saveRouteVariant(groupId, label, xmlStr);
+      } catch (error) {
+        console.warn("Failed to persist route variant:", error);
+      }
+    }
 
     const parsed = parseGPXText(xmlStr, fileName);
 
@@ -73,6 +98,171 @@ router.get("/:groupId", (req, res) => {
 });
 
 /**
+ * DELETE /api/routes/:groupId
+ * Delete an entire route group.
+ */
+router.delete("/:groupId", (req, res) => {
+  try {
+    const { groupId } = req.params;
+    deleteRouteGroup(groupId);
+    return res.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Delete route group error:", error);
+    return res.status(404).json({ error: message });
+  }
+});
+
+/**
+ * DELETE /api/routes/:groupId/variants/:label
+ * Delete a single GPX variant and update metadata.
+ */
+router.delete("/:groupId/variants/:label", (req, res) => {
+  try {
+    const { groupId, label } = req.params;
+    const meta = deleteRouteVariant(groupId, label);
+    return res.json({ success: true, routeGroup: meta });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Delete route variant error:", error);
+    return res.status(404).json({ error: message });
+  }
+});
+
+/**
+ * GET /api/routes/:groupId/gpx/:label
+ * Load a route variant GPX and return parsed geometry for preview.
+ */
+router.get("/:groupId/gpx/:label", (req, res) => {
+  try {
+    const { groupId, label } = req.params;
+    const gpxRaw = loadRouteVariantGpx(groupId, label);
+    const parsed = parseGPXText(gpxRaw, `${groupId}-${label}.gpx`);
+    return res.json(parsed);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Get route variant GPX error:", error);
+    return res.status(404).json({ error: message });
+  }
+});
+
+/**
+ * DELETE /api/routes/:groupId/gpx/:label
+ * Delete a single GPX variant and update metadata.
+ */
+router.delete("/:groupId/gpx/:label", (req, res) => {
+  try {
+    const { groupId, label } = req.params;
+    const meta = deleteRouteVariant(groupId, label);
+    return res.json({ success: true, routeGroup: meta });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Delete route variant error:", error);
+    return res.status(404).json({ error: message });
+  }
+});
+
+/**
+ * GET /api/routes/:groupId/pois
+ * Load POIs for a route group.
+ */
+router.get("/:groupId/pois", (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const pois = loadRoutePois(groupId);
+    return res.json(pois);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Get route POIs error:", error);
+    return res.status(500).json({ error: message });
+  }
+});
+
+/**
+ * POST /api/routes/:groupId/pois/snap
+ * Snap a POI click to one or more route variants and persist.
+ */
+router.post("/:groupId/pois/snap", (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const body = req.body as RoutePoiSnapRequest;
+
+    if (!body?.poi || !body?.click || !Array.isArray(body.variants)) {
+      return res.status(400).json({ error: "Invalid POI snap payload." });
+    }
+
+    const { poi, click, variants } = body;
+    if (!poi.id || !poi.title || !poi.type) {
+      return res.status(400).json({ error: "poi.id, poi.title, and poi.type are required." });
+    }
+    if (
+      typeof click.lat !== "number" ||
+      typeof click.lon !== "number" ||
+      Number.isNaN(click.lat) ||
+      Number.isNaN(click.lon)
+    ) {
+      return res.status(400).json({ error: "click.lat and click.lon must be numbers." });
+    }
+    if (variants.length === 0) {
+      return res.status(400).json({ error: "At least one variant is required." });
+    }
+
+    const normalizedVariants = variants.map((label) =>
+      String(label).toUpperCase()
+    ) as RouteLabel[];
+    const allowed = new Set<RouteLabel>(["MED", "LRG", "XL", "XXL"]);
+    const invalid = normalizedVariants.filter((label) => !allowed.has(label));
+    if (invalid.length > 0) {
+      return res.status(400).json({
+        error: `Invalid variants: ${invalid.join(", ")}`,
+      });
+    }
+
+    const snappedByVariant = snapPointToVariants(groupId, normalizedVariants, click);
+    const doc = loadRoutePois(groupId);
+    const existingIndex = doc.pois.findIndex((item) => item.id === poi.id);
+
+    const base: RoutePoi =
+      existingIndex >= 0
+        ? doc.pois[existingIndex]
+        : {
+            id: poi.id,
+            title: poi.title,
+            type: poi.type,
+            variants: {},
+          };
+
+    base.title = poi.title;
+    base.type = poi.type;
+    if (poi.notes) base.notes = poi.notes;
+    base.drop = { lat: click.lat, lon: click.lon };
+    base.variants = base.variants ?? {};
+
+    for (const [label, placement] of Object.entries(snappedByVariant)) {
+      base.variants[label as RouteLabel] = placement;
+    }
+
+    if (existingIndex >= 0) {
+      doc.pois[existingIndex] = base;
+    } else {
+      doc.pois.push(base);
+    }
+
+    saveRoutePois(groupId, doc);
+
+    return res.json({
+      success: true,
+      poi: base,
+      pois: doc.pois,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Snap POI error:", error);
+    return res.status(400).json({ error: message });
+  }
+});
+
+/**
  * POST /api/routes/:groupId
  * Save a route group to suc-shared-data/routes/:groupId/
  */
@@ -82,22 +272,25 @@ router.post("/:groupId", (req, res) => {
     const body = req.body as SaveRouteGroupRequest;
 
     // Validate request
-    if (!body.name || !body.location || !body.variants || body.variants.length === 0) {
+    if (!body.name || !body.location) {
       return res.status(400).json({ error: "Invalid route group data" });
     }
 
-    // Build metadata
+    const existing = getRouteGroup(groupId);
+    const variants = existing?.variants ?? [];
+
+    // Build metadata (no GPX writes)
     const meta: RouteMeta = {
       routeGroupId: groupId,
       name: body.name,
       location: body.location,
-      source: body.source || "SUC",
-      notes: body.notes || "",
-      variants: body.variants.map((v) => v.label),
+      source: existing?.source ?? body.source ?? "SUC",
+      notes: body.notes ?? existing?.notes ?? "",
+      variants,
     };
 
-    // Save to suc-shared-data
-    saveRouteGroup(groupId, meta, body.variants);
+    // Save to suc-shared-data (metadata only)
+    saveRouteGroup(groupId, meta, []);
 
     return res.json({
       success: true,
