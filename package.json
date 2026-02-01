@@ -7,6 +7,7 @@
     "dev:ui": "vite --port 5173 --strictPort",
     "dev:api": "tsx src/server/index.ts",
     "dev": "concurrently -k --success=first --names \"UI,API\" \"npm run dev:ui\" \"npm run dev:api\"",
+    "build": "vite build",
     "probe": "tsx src/index.ts",
     "test": "tsx src/workoutPreview.test.ts"
   },
