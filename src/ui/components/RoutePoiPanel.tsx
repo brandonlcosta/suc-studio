@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { RouteLabel } from "../types";
 import { LABELS } from "../utils/routeLabels";
 import {
@@ -6,10 +6,24 @@ import {
   getRoutePois,
   snapRoutePoi,
 } from "../utils/api";
+import { getCoordinateAtDistance, type RouteStats } from "../utils/routeMath";
+import {
+  VARIANT_INTERSECTION_THRESHOLD_M,
+  getIntersectingVariants,
+  type RouteVariantGeometry,
+} from "../utils/variantIntersection";
 import SimpleRouteMap from "./SimpleRouteMap";
 
 const POI_TYPES = ["aid", "water", "summit", "fork", "hazard", "viewpoint"];
 const ROUTE_LABELS = new Set<RouteLabel>(LABELS);
+const VARIANT_PACE_MIN_PER_MI: Record<RouteLabel, number> = {
+  MED: 12,
+  LRG: 12,
+  XL: 12,
+  XXL: 12,
+};
+const DRIFT_THRESHOLD_MI = 0.25;
+const FORK_TOLERANCE_DEG = 0.001;
 
 function slugify(value: string): string {
   return value
@@ -23,8 +37,84 @@ function isRouteLabel(value: string): value is RouteLabel {
   return ROUTE_LABELS.has(value as RouteLabel);
 }
 
+function formatEtaMinutes(totalMinutes: number): string {
+  if (!Number.isFinite(totalMinutes)) return "n/a";
+  const rounded = Math.round(totalMinutes);
+  const hours = Math.floor(rounded / 60);
+  const minutes = rounded % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function computePoiWarnings(
+  poi: RoutePoiRecord,
+  variants: RouteLabel[],
+  activeVariant: RouteLabel | ""
+): string[] {
+  const warnings: string[] = [];
+  const placements = variants
+    .map((label) => {
+      const placement = poi.variants?.[label];
+      if (!placement) return null;
+      return { label, placement };
+    })
+    .filter(Boolean) as Array<{
+    label: RouteLabel;
+    placement: {
+      lat: number;
+      lon: number;
+      distanceMi: number;
+      distanceM: number;
+      snapIndex: number;
+    };
+  }>;
+
+  if (placements.length >= 2) {
+    const distances = placements
+      .map((entry) => entry.placement.distanceMi)
+      .filter((value) => typeof value === "number" && Number.isFinite(value));
+    if (distances.length >= 2) {
+      const max = Math.max(...distances);
+      const min = Math.min(...distances);
+      if (max - min > DRIFT_THRESHOLD_MI) {
+        warnings.push("WARNING_DRIFT");
+      }
+    }
+
+    let minLat = Infinity;
+    let maxLat = -Infinity;
+    let minLon = Infinity;
+    let maxLon = -Infinity;
+    placements.forEach(({ placement }) => {
+      minLat = Math.min(minLat, placement.lat);
+      maxLat = Math.max(maxLat, placement.lat);
+      minLon = Math.min(minLon, placement.lon);
+      maxLon = Math.max(maxLon, placement.lon);
+    });
+    if (maxLat - minLat > FORK_TOLERANCE_DEG || maxLon - minLon > FORK_TOLERANCE_DEG) {
+      warnings.push("WARNING_FORK");
+    }
+  }
+
+  if (activeVariant && poi.variants?.[activeVariant]) {
+    const missing = variants.some((label) => !poi.variants?.[label]);
+    if (missing) {
+      warnings.push("WARNING_MISSING_VARIANT");
+    }
+  }
+
+  return warnings;
+}
+
+type PoiEta = {
+  etaMinutes: number;
+  etaLabel: string;
+};
+
 interface RoutePoiPanelProps {
   routeGroupId: string;
+  layout?: "stacked" | "split";
+  sidebarContent?: ReactNode;
+  mapHeight?: number | string;
 }
 
 type RoutePoiRecord = {
@@ -43,7 +133,33 @@ type RoutePoiRecord = {
   >;
 };
 
-export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
+type MapClickPayload = {
+  click: { lat: number; lon: number };
+  snap?: {
+    lat: number;
+    lon: number;
+    index: number;
+    distanceMi: number;
+    distanceM: number;
+    cumulativeMi: number;
+    variant: string;
+  };
+};
+
+type MapFocusTarget = {
+  lat: number;
+  lon: number;
+  zoom?: number;
+  id?: string;
+};
+
+export default function RoutePoiPanel({
+  routeGroupId,
+  layout = "stacked",
+  sidebarContent,
+  mapHeight,
+}: RoutePoiPanelProps) {
+  const [viewMode, setViewMode] = useState<"authoring" | "cue">("authoring");
   const [poiType, setPoiType] = useState("");
   const [poiTitle, setPoiTitle] = useState("");
   const [selectedVariants, setSelectedVariants] = useState<RouteLabel[]>([]);
@@ -53,11 +169,33 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [pois, setPois] = useState<RoutePoiRecord[]>([]);
   const [activePoiId, setActivePoiId] = useState<string | null>(null);
+  const [hoveredRowPoiId, setHoveredRowPoiId] = useState<string | null>(null);
+  const [mapFocus, setMapFocus] = useState<MapFocusTarget | null>(null);
+  const [snapIndicator, setSnapIndicator] = useState<{ lat: number; lon: number } | null>(
+    null
+  );
+  const [variantAssignmentNote, setVariantAssignmentNote] = useState<string | null>(
+    null
+  );
+  const [routeStatsByVariant, setRouteStatsByVariant] = useState<
+    Record<string, RouteStats>
+  >({});
+  const [placeDistanceMi, setPlaceDistanceMi] = useState("");
+  const [basemap, setBasemap] = useState<"clean" | "topo">(() => {
+    if (typeof window === "undefined") return "clean";
+    const stored = window.sessionStorage.getItem("suc-studio-basemap");
+    return stored === "topo" ? "topo" : "clean";
+  });
+  const isSplit = layout === "split";
+  const controlsMaxWidth = isSplit ? "100%" : "400px";
+  const authoringMaxWidth = isSplit ? "100%" : "600px";
+  const resolvedMapHeight = mapHeight ?? (isSplit ? "55vh" : undefined);
 
   const resetForm = useCallback(() => {
     setPoiType("");
     setPoiTitle("");
     setSelectedVariants([]);
+    setVariantAssignmentNote(null);
   }, []);
 
   const variantOptions = availableVariants.length > 0 ? availableVariants : LABELS;
@@ -66,6 +204,207 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
     : "";
   const previewVariant = activeVariantLabel || undefined;
   const canDragPois = Boolean(activeVariantLabel);
+  const activeRouteStats = activeVariantLabel
+    ? routeStatsByVariant[activeVariantLabel]
+    : null;
+  const maxDistanceMi = activeRouteStats?.totalMiles ?? null;
+  const warningLogRef = useRef<Map<string, string>>(new Map());
+  const etaLogRef = useRef<Map<string, number>>(new Map());
+  const snapTimerRef = useRef<number | null>(null);
+  const manualVariantOverrideRef = useRef<Map<string, boolean>>(new Map());
+
+  const routeVariantGeoms = useMemo<RouteVariantGeometry[]>(() => {
+    return variantOptions
+      .map((label) => ({
+        label,
+        coords: routeStatsByVariant[label]?.coords ?? [],
+      }))
+      .filter((entry) => entry.coords.length > 0);
+  }, [variantOptions, routeStatsByVariant]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.sessionStorage.setItem("suc-studio-basemap", basemap);
+  }, [basemap]);
+
+  useEffect(() => {
+    setRouteStatsByVariant({});
+    setMapFocus(null);
+    setHoveredRowPoiId(null);
+    setVariantAssignmentNote(null);
+    manualVariantOverrideRef.current.clear();
+  }, [routeGroupId]);
+
+  useEffect(() => {
+    return () => {
+      if (snapTimerRef.current) {
+        window.clearTimeout(snapTimerRef.current);
+      }
+    };
+  }, []);
+
+  const poiWarnings = useMemo(() => {
+    const next: Record<string, string[]> = {};
+    if (variantOptions.length === 0) return next;
+    for (const poi of pois) {
+      const warnings = computePoiWarnings(poi, variantOptions, activeVariantLabel);
+      if (warnings.length > 0) {
+        next[poi.id] = warnings;
+      }
+    }
+    return next;
+  }, [pois, variantOptions, activeVariantLabel]);
+
+  const poiEtas = useMemo(() => {
+    const next: Record<string, Partial<Record<RouteLabel, PoiEta>>> = {};
+    if (variantOptions.length === 0) return next;
+    for (const poi of pois) {
+      const byVariant: Partial<Record<RouteLabel, PoiEta>> = {};
+      variantOptions.forEach((label) => {
+        const placement = poi.variants?.[label];
+        const pace = VARIANT_PACE_MIN_PER_MI[label];
+        if (!placement || typeof placement.distanceMi !== "number") return;
+        if (!Number.isFinite(placement.distanceMi) || !Number.isFinite(pace)) return;
+        const etaMinutes = placement.distanceMi * pace;
+        byVariant[label] = {
+          etaMinutes,
+          etaLabel: formatEtaMinutes(etaMinutes),
+        };
+      });
+      if (Object.keys(byVariant).length > 0) {
+        next[poi.id] = byVariant;
+      }
+    }
+    return next;
+  }, [pois, variantOptions, activeVariantLabel]);
+
+  const cueSheetRows = useMemo(() => {
+    if (!activeVariantLabel) return [];
+    const pace = VARIANT_PACE_MIN_PER_MI[activeVariantLabel];
+    const rows = pois
+      .map((poi) => {
+        const placement = poi.variants?.[activeVariantLabel];
+        if (!placement || !Number.isFinite(placement.distanceMi)) return null;
+        const etaMinutes = placement.distanceMi * pace;
+        return {
+          poiId: poi.id,
+          name: poi.title || poi.id,
+          type: poi.type,
+          distanceMi: placement.distanceMi,
+          etaMinutes,
+          etaLabel: formatEtaMinutes(etaMinutes),
+        };
+      })
+      .filter(Boolean) as Array<{
+      poiId: string;
+      name: string;
+      type: string;
+      distanceMi: number;
+      etaMinutes: number;
+      etaLabel: string;
+    }>;
+
+    rows.sort((a, b) => a.distanceMi - b.distanceMi);
+    return rows.map((row, index) => {
+      if (index === 0) {
+        return { ...row, deltaMi: null, deltaEtaLabel: "" };
+      }
+      const prev = rows[index - 1];
+      const deltaMi = row.distanceMi - prev.distanceMi;
+      const deltaEtaMinutes = row.etaMinutes - prev.etaMinutes;
+      return {
+        ...row,
+        deltaMi,
+        deltaEtaLabel: formatEtaMinutes(deltaEtaMinutes),
+      };
+    });
+  }, [pois, activeVariantLabel]);
+
+  const cueSheetText = useMemo(() => {
+    if (cueSheetRows.length === 0) return "";
+    return cueSheetRows
+      .map((row, index) => {
+        const distanceLabel = `${row.distanceMi.toFixed(2)} mi`;
+        if (index === 0) {
+          return `${distanceLabel} - ${row.name} (ETA ${row.etaLabel})`;
+        }
+        const deltaLabel = row.deltaMi !== null ? `+${row.deltaMi.toFixed(2)} mi` : "+0.00 mi";
+        const deltaEta = row.deltaEtaLabel ? `+${row.deltaEtaLabel}` : "+00:00";
+        return `${deltaLabel} / ${deltaEta} - ${row.name} (ETA ${row.etaLabel})`;
+      })
+      .join("\n");
+  }, [cueSheetRows]);
+
+  useEffect(() => {
+    const nextIds = new Set(Object.keys(poiWarnings));
+    Object.entries(poiWarnings).forEach(([poiId, warnings]) => {
+      const signature = warnings.join("|");
+      if (warningLogRef.current.get(poiId) !== signature) {
+        console.log("POI_VALIDATION_WARNING", { poiId, warnings });
+        warningLogRef.current.set(poiId, signature);
+      }
+    });
+    warningLogRef.current.forEach((_signature, poiId) => {
+      if (!nextIds.has(poiId)) {
+        warningLogRef.current.delete(poiId);
+      }
+    });
+  }, [poiWarnings]);
+
+  useEffect(() => {
+    const nextKeys = new Set<string>();
+    Object.entries(poiEtas).forEach(([poiId, byVariant]) => {
+      Object.entries(byVariant).forEach(([variant, eta]) => {
+        if (!eta) return;
+        const etaMinutes = eta.etaMinutes;
+        const signature = Number(etaMinutes.toFixed(3));
+        const key = `${poiId}:${variant}`;
+        nextKeys.add(key);
+        if (etaLogRef.current.get(key) !== signature) {
+          console.log("POI_ETA_COMPUTED", {
+            poiId,
+            variant,
+            etaMinutes,
+          });
+          etaLogRef.current.set(key, signature);
+        }
+      });
+    });
+    etaLogRef.current.forEach((_value, key) => {
+      if (!nextKeys.has(key)) {
+        etaLogRef.current.delete(key);
+      }
+    });
+  }, [poiEtas]);
+
+  useEffect(() => {
+    if (viewMode !== "cue") return;
+    console.log("CUE_SHEET_RENDERED", {
+      routeGroupId,
+      variant: activeVariantLabel || null,
+      count: cueSheetRows.length,
+    });
+  }, [viewMode, cueSheetRows, routeGroupId, activeVariantLabel]);
+
+  useEffect(() => {
+    if (activePoiId) return;
+    if (!activeVariantLabel) {
+      setSelectedVariants([]);
+      return;
+    }
+    setSelectedVariants((prev) => {
+      if (prev.length === 1 && prev[0] === activeVariantLabel) return prev;
+      return [activeVariantLabel];
+    });
+  }, [activeVariantLabel, activePoiId]);
+
+  useEffect(() => {
+    if (!activeVariantLabel || !routeGroupId.trim()) return;
+    console.log("ACTIVE_VARIANT_CHANGED", {
+      routeGroupId,
+      variant: activeVariantLabel,
+    });
+  }, [activeVariantLabel, routeGroupId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -144,6 +483,7 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
     setPoiTitle(activePoi.title ?? "");
     const variants = Object.keys(activePoi.variants ?? {}).filter(isRouteLabel);
     setSelectedVariants(variants);
+    setVariantAssignmentNote(null);
   }, [activePoiId, pois]);
 
   useEffect(() => {
@@ -162,6 +502,8 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
         : [...prev, label];
 
       if (activePoiId) {
+        manualVariantOverrideRef.current.set(activePoiId, true);
+        setVariantAssignmentNote(null);
         setPois((prevPois) =>
           prevPois.map((poi) => {
             if (poi.id !== activePoiId) return poi;
@@ -184,42 +526,190 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
     routeGroupId.trim().length > 0 &&
     poiType.trim().length > 0 &&
     poiTitle.trim().length > 0 &&
-    selectedVariants.length > 0 &&
+    Boolean(activeVariantLabel) &&
     !activePoiId;
 
-  const handleMapClick = async (lat: number, lon: number) => {
+  const handleRouteData = useCallback((label: RouteLabel, stats: RouteStats) => {
+    if (!stats) return;
+    setRouteStatsByVariant((prev) => ({ ...prev, [label]: stats }));
+  }, []);
+
+  const showSnapIndicator = useCallback((lat: number, lon: number) => {
+    setSnapIndicator({ lat, lon });
+    if (snapTimerRef.current) {
+      window.clearTimeout(snapTimerRef.current);
+    }
+    snapTimerRef.current = window.setTimeout(() => {
+      setSnapIndicator(null);
+    }, 1200);
+  }, []);
+
+  const getAutoVariantsForCoord = useCallback(
+    (coord: { lat: number; lon: number }) => {
+      if (routeVariantGeoms.length === 0) return [];
+      return getIntersectingVariants(
+        coord,
+        routeVariantGeoms,
+        VARIANT_INTERSECTION_THRESHOLD_M
+      );
+    },
+    [routeVariantGeoms]
+  );
+
+  const applyAutoVariantSelection = useCallback(
+    (coord: { lat: number; lon: number }) => {
+      const autoVariants = getAutoVariantsForCoord(coord);
+      setSelectedVariants(autoVariants);
+      setVariantAssignmentNote("Variants auto-assigned based on route overlap.");
+      return autoVariants;
+    },
+    [getAutoVariantsForCoord]
+  );
+
+  const resolvePoiCoordinate = useCallback(
+    (poi: RoutePoiRecord) => {
+      if (!poi.variants) return null;
+      if (activeVariantLabel && poi.variants[activeVariantLabel]) {
+        const placement = poi.variants[activeVariantLabel];
+        return { lat: placement.lat, lon: placement.lon };
+      }
+      const first = Object.values(poi.variants)[0];
+      if (!first) return null;
+      return { lat: first.lat, lon: first.lon };
+    },
+    [activeVariantLabel]
+  );
+
+  const clearActivePoiSelection = useCallback(() => {
+    if (!activePoiId) return false;
+    setActivePoiId(null);
+    resetForm();
+    return true;
+  }, [activePoiId, resetForm]);
+
+  const placePoiAtPosition = useCallback(
+    async (position: { lat: number; lon: number }) => {
+      setMessage(null);
+      setError(null);
+
+      if (!activeVariantLabel) {
+        setError("Select an active route variant before placing a POI.");
+        return false;
+      }
+      if (!readyToSnap) {
+        setError("Select a type and title before placing a POI.");
+        return false;
+      }
+      if (routeVariantGeoms.length === 0) {
+        setError("Route data not loaded yet. Wait for the route to render.");
+        return false;
+      }
+
+      try {
+        const poiId = `${slugify(poiType)}-${slugify(poiTitle)}`.slice(0, 80);
+        const autoVariants = applyAutoVariantSelection(position);
+        const result = await snapRoutePoi(routeGroupId, {
+          poi: {
+            id: poiId,
+            title: poiTitle.trim(),
+            type: poiType.trim(),
+          },
+          click: { lat: position.lat, lon: position.lon },
+          variants: autoVariants,
+        });
+
+        const updatedPoi = result.poi as RoutePoiRecord;
+        setMessage(`POI snapped and saved (${poiId}).`);
+        setPoiType("");
+        setPoiTitle("");
+        setSelectedVariants([]);
+        if (updatedPoi) {
+          setPois((prev) => {
+            const next = prev.filter((poi) => poi.id !== updatedPoi.id);
+            return [...next, updatedPoi];
+          });
+          manualVariantOverrideRef.current.delete(updatedPoi.id);
+        }
+        showSnapIndicator(position.lat, position.lon);
+        return true;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed to snap POI";
+        setError(msg);
+        return false;
+      }
+    },
+    [
+      activeVariantLabel,
+      applyAutoVariantSelection,
+      poiType,
+      poiTitle,
+      readyToSnap,
+      routeGroupId,
+      routeVariantGeoms.length,
+      showSnapIndicator,
+    ]
+  );
+
+  const handleMapClick = async (payload: MapClickPayload) => {
     setMessage(null);
     setError(null);
-    if (activePoiId) {
-      setActivePoiId(null);
-      resetForm();
+    if (clearActivePoiSelection()) return;
+    if (!activeVariantLabel) {
+      setError("Select an active route variant before clicking the map.");
       return;
     }
-    if (!readyToSnap) {
-      setError("Select a type, title, and at least one variant before clicking the map.");
+    if (!payload.snap) {
+      setError("Route data not loaded yet. Wait for the route to render.");
+      return;
+    }
+    await placePoiAtPosition({ lat: payload.snap.lat, lon: payload.snap.lon });
+  };
+
+  const handlePlaceAtDistance = async () => {
+    setMessage(null);
+    setError(null);
+    if (clearActivePoiSelection()) return;
+    if (!activeVariantLabel) {
+      setError("Select an active route variant before placing by distance.");
+      return;
+    }
+    if (!activeRouteStats) {
+      setError("Route data not loaded yet. Wait for the route to render.");
+      return;
+    }
+    if (!placeDistanceMi.trim()) {
+      setError("Enter a distance in miles.");
+      return;
+    }
+    const raw = Number(placeDistanceMi);
+    if (!Number.isFinite(raw)) {
+      setError("Enter a valid mile value.");
+      return;
+    }
+    if (!Number.isFinite(activeRouteStats.totalMiles) || activeRouteStats.totalMiles <= 0) {
+      setError("Route distance unavailable.");
       return;
     }
 
-    try {
-      const poiId = `${slugify(poiType)}-${slugify(poiTitle)}`.slice(0, 80);
-      const result = await snapRoutePoi(routeGroupId, {
-        poi: {
-          id: poiId,
-          title: poiTitle.trim(),
-          type: poiType.trim(),
-        },
-        click: { lat, lon },
-        variants: selectedVariants,
+    const clamped = Math.min(Math.max(raw, 0), activeRouteStats.totalMiles);
+    if (raw !== clamped) {
+      setPlaceDistanceMi(clamped.toFixed(2));
+    }
+
+    const result = getCoordinateAtDistance(activeRouteStats, clamped);
+    if (!result) {
+      setError("Unable to resolve a coordinate for that distance.");
+      return;
+    }
+
+    const placed = await placePoiAtPosition({ lat: result.lat, lon: result.lon });
+    if (placed) {
+      setMapFocus({
+        lat: result.lat,
+        lon: result.lon,
+        zoom: 14,
+        id: `distance-${Date.now()}`,
       });
-
-      setMessage(`POI snapped and saved (${poiId}).`);
-      setPoiType("");
-      setPoiTitle("");
-      setSelectedVariants([]);
-      setPois(Array.isArray(result.pois) ? (result.pois as RoutePoiRecord[]) : []);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to snap POI";
-      setError(msg);
     }
   };
 
@@ -228,19 +718,71 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
     console.log("POI_SELECTED", { poiId, routeGroupId, variant: activeVariantLabel || null });
   };
 
-  const handlePoiDragEnd = async (poiId: string, position: { lat: number; lon: number }) => {
-    if (!canDragPois || !routeGroupId.trim()) return;
-    const target = pois.find((poi) => poi.id === poiId);
+  const handleRecalculateVariants = async () => {
+    if (!activePoiId) return;
+    const target = pois.find((poi) => poi.id === activePoiId);
     if (!target) return;
-    const variantsToSnap = Object.keys(target.variants ?? {})
-      .filter(isRouteLabel)
-      .filter((label) => variantOptions.includes(label));
-    if (variantsToSnap.length === 0) {
-      setError("Selected POI has no variants to snap.");
+    if (routeVariantGeoms.length === 0) {
+      setError("Route data not loaded yet. Wait for the route to render.");
+      return;
+    }
+    const coord = resolvePoiCoordinate(target);
+    if (!coord) {
+      setError("Selected POI is missing coordinates.");
       return;
     }
 
     try {
+      const autoVariants = applyAutoVariantSelection(coord);
+      const result = await snapRoutePoi(routeGroupId, {
+        poi: {
+          id: target.id,
+          title: target.title,
+          type: target.type,
+        },
+        click: { lat: coord.lat, lon: coord.lon },
+        variants: autoVariants,
+      });
+      const updatedPoi = result.poi as RoutePoiRecord;
+      if (updatedPoi) {
+        setPois((prev) =>
+          prev.map((poi) => (poi.id === updatedPoi.id ? updatedPoi : poi))
+        );
+        manualVariantOverrideRef.current.delete(updatedPoi.id);
+      }
+      setMessage("Variants recalculated.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to recalculate variants";
+      setError(msg);
+    }
+  };
+
+  const handlePoiRowFocus = (poi: RoutePoiRecord) => {
+    handlePoiSelect(poi.id);
+    const placement =
+      (activeVariantLabel && poi.variants?.[activeVariantLabel]) ||
+      (poi.variants ? Object.values(poi.variants)[0] : undefined);
+    if (!placement) return;
+    setMapFocus({
+      lat: placement.lat,
+      lon: placement.lon,
+      zoom: 14,
+      id: `poi-${poi.id}-${Date.now()}`,
+    });
+  };
+
+  const handlePoiDragEnd = async (poiId: string, position: { lat: number; lon: number }) => {
+    if (!canDragPois || !routeGroupId.trim()) return;
+    if (!activeVariantLabel) return;
+    const target = pois.find((poi) => poi.id === poiId);
+    if (!target) return;
+    if (routeVariantGeoms.length === 0) {
+      setError("Route data not loaded yet. Wait for the route to render.");
+      return;
+    }
+
+    try {
+      const autoVariants = applyAutoVariantSelection(position);
       const result = await snapRoutePoi(routeGroupId, {
         poi: {
           id: target.id,
@@ -248,9 +790,15 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
           type: target.type,
         },
         click: { lat: position.lat, lon: position.lon },
-        variants: variantsToSnap,
+        variants: autoVariants,
       });
-      setPois(Array.isArray(result.pois) ? (result.pois as RoutePoiRecord[]) : []);
+      const updatedPoi = result.poi as RoutePoiRecord;
+      if (updatedPoi) {
+        setPois((prev) =>
+          prev.map((poi) => (poi.id === updatedPoi.id ? updatedPoi : poi))
+        );
+        manualVariantOverrideRef.current.delete(updatedPoi.id);
+      }
       setMessage(`POI moved (${poiId}).`);
       console.log("POI_MOVED", {
         poiId,
@@ -277,144 +825,526 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
     }
   };
 
-  return (
-    <div style={{ marginTop: "2rem" }}>
-      <h3 style={{ color: "#f5f5f5", marginBottom: "0.75rem" }}>POI Authoring</h3>
+  const handleCopyCueSheet = async () => {
+    if (!cueSheetText) {
+      setError("No cue sheet entries to copy.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(cueSheetText);
+      setMessage("Cue sheet copied to clipboard.");
+      console.log("CUE_SHEET_EXPORTED", { routeGroupId, format: "text" });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to copy cue sheet";
+      setError(msg);
+    }
+  };
 
-      <div style={{ display: "grid", gap: "0.75rem", maxWidth: "600px" }}>
-        <div style={{ display: "grid", gap: "0.5rem" }}>
-          <label style={{ fontSize: "0.85rem", color: "#999999" }}>POI Type</label>
-          <select
-            value={poiType}
-            onChange={(e) => {
-              const value = e.target.value;
-              setPoiType(value);
-              if (activePoiId) {
-                setPois((prev) =>
-                  prev.map((poi) =>
-                    poi.id === activePoiId ? { ...poi, type: value } : poi
-                  )
-                );
-              }
-            }}
-            style={{ padding: "0.5rem", border: "1px solid #2b2b2b" }}
-          >
-            <option value="">Select type</option>
-            {POI_TYPES.map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
-          </select>
-        </div>
+  const handleExportCueSheet = () => {
+    const payload = cueSheetRows.map((row) => ({
+      poiId: row.poiId,
+      name: row.name,
+      type: row.type,
+      distanceMi: row.distanceMi,
+      etaMinutes: row.etaMinutes,
+      etaLabel: row.etaLabel,
+      deltaMi: row.deltaMi,
+      deltaEta: row.deltaEtaLabel || null,
+    }));
+    const json = JSON.stringify(
+      { routeGroupId, variant: activeVariantLabel || null, entries: payload },
+      null,
+      2
+    );
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${routeGroupId || "route"}-cue-sheet.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    console.log("CUE_SHEET_EXPORTED", { routeGroupId, format: "json" });
+  };
 
-        <div style={{ display: "grid", gap: "0.5rem" }}>
-          <label style={{ fontSize: "0.85rem", color: "#999999" }}>Title</label>
-          <input
-            value={poiTitle}
-            onChange={(e) => {
-              const value = e.target.value;
-              setPoiTitle(value);
-              if (activePoiId) {
-                setPois((prev) =>
-                  prev.map((poi) =>
-                    poi.id === activePoiId ? { ...poi, title: value } : poi
-                  )
-                );
-              }
-            }}
-            style={{ padding: "0.5rem", border: "1px solid #2b2b2b" }}
-            placeholder="Mitchell Canyon Aid"
-          />
-        </div>
+  const controls = (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      <div style={{ display: "flex", gap: "0.5rem" }}>
+        <button
+          type="button"
+          onClick={() => setViewMode("authoring")}
+          style={{
+            padding: "0.35rem 0.75rem",
+            borderRadius: "999px",
+            border: viewMode === "authoring" ? "1px solid #4b6bff" : "1px solid #2b2b2b",
+            background: viewMode === "authoring" ? "#1a2240" : "#0b0f17",
+            color: "#f5f5f5",
+            cursor: "pointer",
+            fontSize: "0.8rem",
+          }}
+        >
+          Authoring
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewMode("cue")}
+          style={{
+            padding: "0.35rem 0.75rem",
+            borderRadius: "999px",
+            border: viewMode === "cue" ? "1px solid #4b6bff" : "1px solid #2b2b2b",
+            background: viewMode === "cue" ? "#1a2240" : "#0b0f17",
+            color: "#f5f5f5",
+            cursor: "pointer",
+            fontSize: "0.8rem",
+          }}
+        >
+          Cue Sheet
+        </button>
+      </div>
 
-        <div style={{ display: "grid", gap: "0.5rem" }}>
-          <label style={{ fontSize: "0.85rem", color: "#999999" }}>Variants</label>
-          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-            {variantOptions.map((label) => {
-              const isEditing = Boolean(activePoiId);
-              const isSelected = selectedVariants.includes(label);
-              const isDisabled = isEditing && !isSelected;
+      <h3 style={{ color: "#f5f5f5", marginBottom: "0.75rem" }}>
+        {viewMode === "cue" ? "Cue Sheet" : "POI Authoring"}
+      </h3>
+
+      <div style={{ display: "grid", gap: "0.5rem", maxWidth: controlsMaxWidth, marginBottom: "1rem" }}>
+        <label style={{ fontSize: "0.85rem", color: "#999999" }}>
+          Active Route (viewer toggle)
+        </label>
+        <select
+          value={activeVariant}
+          onChange={(e) => setActiveVariant(e.target.value as RouteLabel | "")}
+          style={{ padding: "0.5rem", border: "1px solid #2b2b2b" }}
+        >
+          <option value="">Select variant</option>
+          {availableVariants.map((label) => (
+            <option key={label} value={label}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <span style={{ fontSize: "0.75rem", color: "#7e8798" }}>Basemap</span>
+          <div style={{ display: "flex", gap: "0.35rem" }}>
+            {(["clean", "topo"] as const).map((option) => {
+              const isActive = basemap === option;
               return (
-                <label
-                  key={label}
-                  style={{ display: "flex", gap: "0.4rem", opacity: isDisabled ? 0.5 : 1 }}
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setBasemap(option)}
+                  style={{
+                    padding: "0.25rem 0.5rem",
+                    borderRadius: "999px",
+                    border: isActive ? "1px solid #4b6bff" : "1px solid #2b2b2b",
+                    background: isActive ? "#1a2240" : "#0b0f17",
+                    color: "#f5f5f5",
+                    cursor: "pointer",
+                    fontSize: "0.7rem",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                  }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => handleVariantToggle(label)}
-                    disabled={isDisabled}
-                  />
-                  <span style={{ color: "#f5f5f5" }}>{label}</span>
-                </label>
+                  {option}
+                </button>
               );
             })}
           </div>
         </div>
+      </div>
 
-        <div style={{ display: "grid", gap: "0.5rem" }}>
-          <label style={{ fontSize: "0.85rem", color: "#999999" }}>
-            Active Route (viewer toggle)
-          </label>
-          <select
-            value={activeVariant}
-            onChange={(e) => setActiveVariant(e.target.value as RouteLabel | "")}
-            style={{ padding: "0.5rem", border: "1px solid #2b2b2b" }}
-          >
-            <option value="">Select variant</option>
-            {availableVariants.map((label) => (
-              <option key={label} value={label}>
-                {label}
-              </option>
-            ))}
-          </select>
+      {viewMode === "authoring" ? (
+        <div style={{ display: "grid", gap: "0.75rem", maxWidth: authoringMaxWidth }}>
+          <div style={{ display: "grid", gap: "0.5rem" }}>
+            <label style={{ fontSize: "0.85rem", color: "#999999" }}>POI Type</label>
+            <select
+              value={poiType}
+              onChange={(e) => {
+                const value = e.target.value;
+                setPoiType(value);
+                if (activePoiId) {
+                  setPois((prev) =>
+                    prev.map((poi) =>
+                      poi.id === activePoiId ? { ...poi, type: value } : poi
+                    )
+                  );
+                }
+              }}
+              style={{ padding: "0.5rem", border: "1px solid #2b2b2b" }}
+            >
+              <option value="">Select type</option>
+              {POI_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ display: "grid", gap: "0.5rem" }}>
+            <label style={{ fontSize: "0.85rem", color: "#999999" }}>Title</label>
+            <input
+              value={poiTitle}
+              onChange={(e) => {
+                const value = e.target.value;
+                setPoiTitle(value);
+                if (activePoiId) {
+                  setPois((prev) =>
+                    prev.map((poi) =>
+                      poi.id === activePoiId ? { ...poi, title: value } : poi
+                    )
+                  );
+                }
+              }}
+              style={{ padding: "0.5rem", border: "1px solid #2b2b2b" }}
+              placeholder="Mitchell Canyon Aid"
+            />
+          </div>
+
+          <div style={{ display: "grid", gap: "0.5rem" }}>
+            <label style={{ fontSize: "0.85rem", color: "#999999" }}>Variants</label>
+            <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+              {variantOptions.map((label) => {
+                const isEditing = Boolean(activePoiId);
+                const isSelected = selectedVariants.includes(label);
+                const isDisabled = isEditing && !isSelected;
+                return (
+                  <label
+                    key={label}
+                    style={{ display: "flex", gap: "0.4rem", opacity: isDisabled ? 0.5 : 1 }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => handleVariantToggle(label)}
+                      disabled={isDisabled}
+                    />
+                    <span style={{ color: "#f5f5f5" }}>{label}</span>
+                  </label>
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <button
+                type="button"
+                onClick={handleRecalculateVariants}
+                disabled={!activePoiId || routeVariantGeoms.length === 0}
+                style={{
+                  padding: "0.3rem 0.6rem",
+                  borderRadius: "6px",
+                  border: "1px solid #2b2b2b",
+                  background:
+                    !activePoiId || routeVariantGeoms.length === 0
+                      ? "#131a2a"
+                      : "#0f1522",
+                  color: "#f5f5f5",
+                  cursor:
+                    !activePoiId || routeVariantGeoms.length === 0
+                      ? "not-allowed"
+                      : "pointer",
+                  fontSize: "0.75rem",
+                }}
+              >
+                Recalculate variants
+              </button>
+              {variantAssignmentNote && (
+                <span style={{ fontSize: "0.75rem", color: "#7e8798" }}>
+                  {variantAssignmentNote}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gap: "0.4rem" }}>
+            <label style={{ fontSize: "0.85rem", color: "#999999" }}>
+              Place POI at mile
+            </label>
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={placeDistanceMi}
+                onChange={(e) => setPlaceDistanceMi(e.target.value)}
+                style={{ padding: "0.5rem", border: "1px solid #2b2b2b", flex: 1 }}
+                placeholder={maxDistanceMi ? `0 - ${maxDistanceMi.toFixed(2)}` : "e.g. 12.5"}
+              />
+              <button
+                type="button"
+                onClick={handlePlaceAtDistance}
+                disabled={!readyToSnap || !activeVariantLabel}
+                style={{
+                  padding: "0.45rem 0.75rem",
+                  borderRadius: "6px",
+                  border: "1px solid #2b2b2b",
+                  background:
+                    !readyToSnap || !activeVariantLabel ? "#131a2a" : "#0f1522",
+                  color: "#f5f5f5",
+                  cursor:
+                    !readyToSnap || !activeVariantLabel ? "not-allowed" : "pointer",
+                  fontSize: "0.8rem",
+                }}
+              >
+                Place
+              </button>
+            </div>
+            {maxDistanceMi !== null && (
+              <div style={{ fontSize: "0.75rem", color: "#666" }}>
+                Route range: 0.00 - {maxDistanceMi.toFixed(2)} mi
+              </div>
+            )}
+          </div>
+
+          {activePoiId && (
+            <div>
+              <button
+                type="button"
+                onClick={handleDeletePoi}
+                style={{
+                  padding: "0.4rem 0.75rem",
+                  borderRadius: "4px",
+                  border: "1px solid #3a1a1a",
+                  background: "#2a1212",
+                  color: "#ffb4b4",
+                  cursor: "pointer",
+                  fontSize: "0.8rem",
+                }}
+              >
+                Delete POI
+              </button>
+            </div>
+          )}
         </div>
-
-        {activePoiId && (
-          <div>
+      ) : (
+        <div style={{ display: "grid", gap: "0.75rem" }}>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
             <button
               type="button"
-              onClick={handleDeletePoi}
+              onClick={handleCopyCueSheet}
               style={{
                 padding: "0.4rem 0.75rem",
                 borderRadius: "4px",
-                border: "1px solid #3a1a1a",
-                background: "#2a1212",
-                color: "#ffb4b4",
+                border: "1px solid #2b2b2b",
+                background: "#0f1522",
+                color: "#f5f5f5",
                 cursor: "pointer",
                 fontSize: "0.8rem",
               }}
             >
-              Delete POI
+              Copy as Text
+            </button>
+            <button
+              type="button"
+              onClick={handleExportCueSheet}
+              style={{
+                padding: "0.4rem 0.75rem",
+                borderRadius: "4px",
+                border: "1px solid #2b2b2b",
+                background: "#0f1522",
+                color: "#f5f5f5",
+                cursor: "pointer",
+                fontSize: "0.8rem",
+              }}
+            >
+              Export JSON
             </button>
           </div>
-        )}
-      </div>
 
-      <div style={{ marginTop: "1rem" }}>
+          {!activeVariantLabel && (
+            <div style={{ color: "#999999", fontSize: "0.85rem" }}>
+              Select an active variant to view the cue sheet.
+            </div>
+          )}
+
+          {activeVariantLabel && cueSheetRows.length === 0 && (
+            <div style={{ color: "#666", fontSize: "0.85rem" }}>
+              No cue sheet entries yet.
+            </div>
+          )}
+
+          {activeVariantLabel && cueSheetRows.length > 0 && (
+            <table style={{ width: "100%", fontSize: "0.8rem", color: "#f5f5f5" }}>
+              <thead>
+                <tr>
+                  <th align="left">POI Name</th>
+                  <th align="left">Type</th>
+                  <th align="left">Distance (mi)</th>
+                  <th align="left">ETA ({activeVariantLabel})</th>
+                  <th align="left">Delta from previous</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cueSheetRows.map((row) => (
+                  <tr key={row.poiId}>
+                    <td>{row.name}</td>
+                    <td>{row.type}</td>
+                    <td>{row.distanceMi.toFixed(2)}</td>
+                    <td>{row.etaLabel}</td>
+                    <td>
+                      {row.deltaMi === null
+                        ? "-"
+                        : `+${row.deltaMi.toFixed(2)} mi / +${row.deltaEtaLabel}`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  const existingPois = viewMode === "authoring" ? (
+    <div>
+      <div style={{ color: "#999999", fontSize: "0.85rem", marginBottom: "0.5rem" }}>
+        Existing POIs
+      </div>
+      {pois.length === 0 ? (
+        <div style={{ color: "#666", fontSize: "0.8rem" }}>No POIs yet.</div>
+      ) : (
+        <table style={{ width: "100%", fontSize: "0.8rem", color: "#f5f5f5" }}>
+          <thead>
+            <tr>
+              <th align="left">warn</th>
+              <th align="left">id</th>
+              <th align="left">type</th>
+              <th align="left">title</th>
+              <th align="left">variants</th>
+              <th align="left">distanceMi</th>
+              {variantOptions.map((label) => (
+                <th key={`eta-${label}`} align="left">
+                  ETA {label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {pois.map((poi) => {
+              const variants = poi.variants ? Object.keys(poi.variants).sort() : [];
+              const distanceMi = variants
+                .map((label) => {
+                  const value = poi.variants?.[label]?.distanceMi;
+                  return `${label}:${typeof value === "number" ? value.toFixed(2) : "n/a"}`;
+                })
+                .join(", ");
+              const warnings = poiWarnings[poi.id] ?? [];
+              const warningText = warnings.join("\n");
+              const etas = poiEtas[poi.id] ?? {};
+              const isRowHovered = hoveredRowPoiId === poi.id;
+              return (
+                <tr
+                  key={poi.id}
+                  onClick={() => handlePoiRowFocus(poi)}
+                  onMouseEnter={() => setHoveredRowPoiId(poi.id)}
+                  onMouseLeave={() =>
+                    setHoveredRowPoiId((prev) => (prev === poi.id ? null : prev))
+                  }
+                  style={{
+                    background:
+                      poi.id === activePoiId
+                        ? "#162033"
+                        : isRowHovered
+                          ? "#111827"
+                          : "transparent",
+                    cursor: "pointer",
+                  }}
+                >
+                  <td>
+                    {warnings.length > 0 && (
+                      <span
+                        title={warningText}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: "16px",
+                          height: "16px",
+                          borderRadius: "50%",
+                          background: "#facc15",
+                          color: "#1f2937",
+                          fontWeight: 700,
+                          fontSize: "0.7rem",
+                        }}
+                      >
+                        !
+                      </span>
+                    )}
+                  </td>
+                  <td>{poi.id}</td>
+                  <td>{poi.type}</td>
+                  <td>{poi.title}</td>
+                  <td>{variants.join(", ")}</td>
+                  <td>{distanceMi}</td>
+                  {variantOptions.map((label) => (
+                    <td key={`${poi.id}-eta-${label}`}>
+                      {etas[label]?.etaLabel ?? "-"}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  ) : null;
+
+  const viewer = (
+    <div style={{ marginTop: isSplit ? 0 : "1rem" }}>
+      {viewMode === "authoring" && (
         <div style={{ color: "#999999", fontSize: "0.85rem", marginBottom: "0.5rem" }}>
           Click the route preview to place a POI.
         </div>
+      )}
+      <div
+        style={{
+          border: "1px solid #2b2b2b",
+          background: "#0b0b0b",
+          cursor:
+            viewMode === "authoring"
+              ? readyToSnap
+                ? "crosshair"
+                : activePoiId
+                  ? "default"
+                  : "not-allowed"
+              : "default",
+        }}
+      >
+        <SimpleRouteMap
+          routeGroupId={routeGroupId}
+          variant={previewVariant}
+          variants={variantOptions}
+          pois={pois}
+          poiWarnings={poiWarnings}
+          poiEtas={poiEtas}
+          activePoiId={activePoiId}
+          allowPoiDrag={canDragPois && viewMode === "authoring"}
+          basemap={basemap}
+          enableHoverHud={viewMode === "authoring"}
+          height={resolvedMapHeight}
+          onRouteData={handleRouteData}
+          focusTarget={mapFocus}
+          highlightedPoiId={hoveredRowPoiId}
+          snapIndicator={snapIndicator}
+          onMapClick={viewMode === "authoring" ? handleMapClick : undefined}
+          onPoiSelect={handlePoiSelect}
+          onPoiDragEnd={handlePoiDragEnd}
+        />
+      </div>
+
+      {isSplit && (
         <div
           style={{
-            border: "1px solid #2b2b2b",
-            background: "#0b0b0b",
-            cursor: readyToSnap ? "crosshair" : activePoiId ? "default" : "not-allowed",
+            marginTop: "1.25rem",
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+            gap: "1.5rem",
+            alignItems: "start",
           }}
         >
-          <SimpleRouteMap
-            routeGroupId={routeGroupId}
-            variant={previewVariant}
-            pois={pois}
-            activePoiId={activePoiId}
-            allowPoiDrag={canDragPois}
-            onMapClick={handleMapClick}
-            onPoiSelect={handlePoiSelect}
-            onPoiDragEnd={handlePoiDragEnd}
-          />
+          <div>{controls}</div>
+          <div>{existingPois}</div>
         </div>
-      </div>
+      )}
 
       {message && (
         <div style={{ marginTop: "0.75rem", color: "#4ade80" }}>{message}</div>
@@ -423,46 +1353,32 @@ export default function RoutePoiPanel({ routeGroupId }: RoutePoiPanelProps) {
         <div style={{ marginTop: "0.75rem", color: "#ff9999" }}>{error}</div>
       )}
 
-      <div style={{ marginTop: "1rem" }}>
-        <div style={{ color: "#999999", fontSize: "0.85rem", marginBottom: "0.5rem" }}>
-          Existing POIs
+      {!isSplit && existingPois && <div style={{ marginTop: "1rem" }}>{existingPois}</div>}
+    </div>
+  );
+
+  if (isSplit) {
+    return (
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) 380px",
+          gap: "1.5rem",
+          alignItems: "start",
+        }}
+      >
+        <div>{viewer}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+          {sidebarContent}
         </div>
-        {pois.length === 0 ? (
-          <div style={{ color: "#666", fontSize: "0.8rem" }}>No POIs yet.</div>
-        ) : (
-          <table style={{ width: "100%", fontSize: "0.8rem", color: "#f5f5f5" }}>
-            <thead>
-              <tr>
-                <th align="left">id</th>
-                <th align="left">type</th>
-                <th align="left">title</th>
-                <th align="left">variants</th>
-                <th align="left">distanceMi</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pois.map((poi) => {
-                const variants = poi.variants ? Object.keys(poi.variants).sort() : [];
-                const distanceMi = variants
-                  .map((label) => {
-                    const value = poi.variants?.[label]?.distanceMi;
-                    return `${label}:${typeof value === "number" ? value.toFixed(2) : "n/a"}`;
-                  })
-                  .join(", ");
-                return (
-                  <tr key={poi.id} style={{ background: poi.id === activePoiId ? "#162033" : "transparent" }}>
-                    <td>{poi.id}</td>
-                    <td>{poi.type}</td>
-                    <td>{poi.title}</td>
-                    <td>{variants.join(", ")}</td>
-                    <td>{distanceMi}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
       </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: "2rem" }}>
+      {controls}
+      {viewer}
     </div>
   );
 }

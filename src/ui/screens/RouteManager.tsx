@@ -673,224 +673,28 @@ export default function RouteManager() {
     }
   }, [activeRouteGroupId, activeRouteGroup, routeName, location, notes, routes]);
 
-  // Empty state
-  if (routes.length === 0) {
-    return (
-      <div style={{ display: "flex", minHeight: "100vh", backgroundColor: "#0a0e14" }}>
-        {routeLibrary}
-        <div style={{ flex: 1, padding: "2rem", maxWidth: "900px" }}>
-        <h1 style={{ color: "#f5f5f5" }}>Route Manager</h1>
-        <p style={{ color: "#999999", marginBottom: "2rem" }}>
-          Import GPX files to create route groups
-        </p>
-
-        <DropZone onFilesSelected={handleFilesSelected} disabled={isProcessing} />
-
-        {isProcessing && (
-          <div style={{ marginTop: "1rem", color: "#4ade80" }}>
-            Processing files...
-          </div>
-        )}
-
-        {error && (
-          <div
-            style={{
-              marginTop: "1rem",
-              padding: "1rem",
-              backgroundColor: "#2a1a1a",
-              borderRadius: "4px",
-              color: "#ff9999",
-              border: "1px solid #ff5a5a",
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            {error}
-          </div>
-        )}
-
-        {success && (
-          <div
-            style={{
-              marginTop: "1rem",
-              padding: "1rem",
-              backgroundColor: "#1a2e22",
-              borderRadius: "4px",
-              color: "#4ade80",
-              border: "1px solid #16a34a",
-            }}
-          >
-            {success}
-          </div>
-        )}
-
-        <div style={{ marginTop: "2rem" }}>
-          <h3 style={{ marginBottom: "0.5rem", color: "#f5f5f5" }}>POI Authoring</h3>
-          <div style={{ display: "grid", gap: "0.5rem", maxWidth: "400px" }}>
-            <label style={{ fontSize: "0.85rem", color: "#999999", fontWeight: "500" }}>
-              Route Group ID
-            </label>
-            <input
-              value={activeRouteGroupId ?? ""}
-              onChange={(e) => setActiveRouteGroupId(e.target.value)}
-              style={{
-                padding: "0.5rem",
-                border: "1px solid #2b2b2b",
-                borderRadius: "4px",
-                backgroundColor: "#0b0b0b",
-                color: "#f5f5f5",
-                fontSize: "1rem",
-              }}
-              placeholder="SUC-034"
-            />
-          </div>
-          <RoutePoiPanel routeGroupId={activeRouteGroup?.routeGroupId ?? ""} />
-        </div>
-        </div>
-      </div>
-    );
-  }
-
-  // With routes: two-column layout
-  return (
-    <div style={{ display: "flex", height: "calc(100vh - 60px)", backgroundColor: "#0a0e14" }}>
-      {routeLibrary}
-      {/* Left Panel: Controls + Route List */}
+  const routeSidebar = (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
       <div
         style={{
-          width: "450px",
-          height: "100%",
-          overflowY: "auto",
-          padding: "1.5rem",
-          backgroundColor: "#0b0f17",
-          borderRight: "1px solid #2a2a2a",
+          border: "1px solid #1f2734",
+          borderRadius: "12px",
+          background: "#0b0f17",
+          padding: "1rem",
+          display: "grid",
+          gap: "0.75rem",
         }}
       >
-        <div
-          style={{
-            marginBottom: "1.5rem",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <h2 style={{ fontSize: "1.25rem", margin: 0, color: "#f5f5f5" }}>Routes ({routes.length})</h2>
-          <button
-            onClick={handleClear}
-            style={{
-              padding: "0.5rem 1rem",
-              backgroundColor: "#f44336",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontSize: "0.875rem",
-            }}
-          >
-            Clear All
-          </button>
-        </div>
-
-        <DropZone onFilesSelected={handleFilesSelected} disabled={isProcessing} />
-
-        {isProcessing && (
-          <div style={{ marginTop: "1rem", color: "#4ade80" }}>
-            Processing files...
+        <div>
+          <div style={{ color: "#f5f5f5", fontSize: "1rem", fontWeight: 600 }}>
+            Route Group Details
           </div>
-        )}
-
-        {error && (
-          <div
-            style={{
-              marginTop: "1rem",
-              padding: "1rem",
-              backgroundColor: "#2a1a1a",
-              borderRadius: "4px",
-              color: "#ff9999",
-              border: "1px solid #ff5a5a",
-              whiteSpace: "pre-wrap",
-              fontSize: "0.875rem",
-            }}
-          >
-            {error}
-          </div>
-        )}
-
-        {success && (
-          <div
-            style={{
-              marginTop: "1rem",
-              padding: "1rem",
-              backgroundColor: "#1a2e22",
-              borderRadius: "4px",
-              color: "#4ade80",
-              border: "1px solid #16a34a",
-            }}
-          >
-            {success}
-          </div>
-        )}
-
-        <div style={{ marginTop: "1.5rem" }}>
-          <div style={{ marginBottom: "1rem" }}>
-            <strong style={{ color: "#f5f5f5" }}>Existing Route Groups</strong>
-            {isLoadingGroups && (
-              <div style={{ marginTop: "0.5rem", color: "#4ade80" }}>
-                Loading routes...
-              </div>
-            )}
-            {groupsError && (
-              <div style={{ marginTop: "0.5rem", color: "#ff9999" }}>
-                {groupsError}
-              </div>
-            )}
-            {!isLoadingGroups && !groupsError && existingGroups.length === 0 && (
-              <div style={{ marginTop: "0.5rem", color: "#999999" }}>
-                No route groups found.
-              </div>
-            )}
-            {existingGroups.length > 0 && (
-              <pre
-                style={{
-                  marginTop: "0.5rem",
-                  background: "#1a1a1a",
-                  color: "#f5f5f5",
-                  padding: "0.75rem",
-                  borderRadius: "4px",
-                  overflowX: "auto",
-                  fontSize: "0.8rem",
-                  border: "1px solid #2a2a2a",
-                }}
-              >
-                {JSON.stringify(existingGroups, null, 2)}
-              </pre>
-            )}
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            {orderedRoutes.map((route) => (
-              <RouteCard
-                key={route.id}
-                route={route}
-                onLabelChange={handleLabelChange}
-              />
-            ))}
+          <div style={{ color: "#7e8798", fontSize: "0.75rem" }}>
+            Define the metadata for this route group.
           </div>
         </div>
-      </div>
 
-      {/* Right Panel: Route Group Form */}
-      <div
-        style={{
-          flex: 1,
-          height: "100%",
-          overflowY: "auto",
-          padding: "2rem",
-          backgroundColor: "#0a0e14",
-        }}
-      >
-        <h2 style={{ marginBottom: "1.5rem", color: "#f5f5f5" }}>Route Group Details</h2>
-
-        <div style={{ display: "grid", gap: "1rem", maxWidth: "600px" }}>
+        <div style={{ display: "grid", gap: "0.75rem" }}>
           <div style={{ display: "grid", gap: "0.5rem" }}>
             <label style={{ fontSize: "0.85rem", color: "#999999", fontWeight: "500" }}>
               Route Group ID *
@@ -957,36 +761,162 @@ export default function RouteManager() {
               onChange={(e) => setNotes(e.target.value)}
               style={{
                 padding: "0.5rem",
-                border: "1px solid #ccc",
+                border: "1px solid #2b2b2b",
                 borderRadius: "4px",
-                minHeight: "100px",
-                fontSize: "1rem",
+                minHeight: "90px",
+                backgroundColor: "#0b0b0b",
+                color: "#f5f5f5",
+                fontSize: "0.95rem",
               }}
               placeholder="Optional notes about this route group"
             />
           </div>
+        </div>
 
+        <button
+          onClick={handleSave}
+          disabled={isProcessing}
+          style={{
+            padding: "0.7rem 1.25rem",
+            backgroundColor: isProcessing ? "#1a1a1a" : "#16a34a",
+            color: "white",
+            border: "none",
+            borderRadius: "6px",
+            cursor: isProcessing ? "not-allowed" : "pointer",
+            fontSize: "0.95rem",
+            fontWeight: 600,
+          }}
+        >
+          {isProcessing ? "Saving..." : "Save Route Group"}
+        </button>
+      </div>
+
+      <div
+        style={{
+          border: "1px solid #1f2734",
+          borderRadius: "12px",
+          background: "#0b0f17",
+          padding: "1rem",
+          display: "grid",
+          gap: "0.75rem",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ color: "#f5f5f5", fontSize: "1rem", fontWeight: 600 }}>
+              Routes ({routes.length})
+            </div>
+            <div style={{ color: "#7e8798", fontSize: "0.75rem" }}>
+              Drop GPX files to build the current group.
+            </div>
+          </div>
           <button
-            onClick={handleSave}
-            disabled={isProcessing}
+            onClick={handleClear}
+            disabled={routes.length === 0}
             style={{
-              padding: "0.75rem 1.5rem",
-              backgroundColor: isProcessing ? "#1a1a1a" : "#16a34a",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: isProcessing ? "not-allowed" : "pointer",
-              fontSize: "1rem",
-              fontWeight: "600",
-              marginTop: "1rem",
+              padding: "0.35rem 0.7rem",
+              borderRadius: "6px",
+              border: "1px solid #3a1a1a",
+              background: routes.length === 0 ? "#131a2a" : "#2a1212",
+              color: routes.length === 0 ? "#6b7280" : "#ffb4b4",
+              cursor: routes.length === 0 ? "not-allowed" : "pointer",
+              fontSize: "0.75rem",
             }}
           >
-            {isProcessing ? "Saving..." : "Save Route Group"}
+            Clear All
           </button>
         </div>
 
-        <RoutePoiPanel routeGroupId={activeRouteGroup?.routeGroupId ?? ""} />
+        <DropZone onFilesSelected={handleFilesSelected} disabled={isProcessing} />
+
+        {isProcessing && (
+          <div style={{ marginTop: "0.5rem", color: "#4ade80" }}>
+            Processing files...
+          </div>
+        )}
+
+        {error && (
+          <div
+            style={{
+              marginTop: "0.5rem",
+              padding: "0.75rem",
+              backgroundColor: "#2a1a1a",
+              borderRadius: "4px",
+              color: "#ff9999",
+              border: "1px solid #ff5a5a",
+              whiteSpace: "pre-wrap",
+              fontSize: "0.85rem",
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div
+            style={{
+              marginTop: "0.5rem",
+              padding: "0.75rem",
+              backgroundColor: "#1a2e22",
+              borderRadius: "4px",
+              color: "#4ade80",
+              border: "1px solid #16a34a",
+              fontSize: "0.85rem",
+            }}
+          >
+            {success}
+          </div>
+        )}
+
+        {orderedRoutes.length === 0 ? (
+          <div style={{ color: "#7e8798", fontSize: "0.8rem" }}>
+            No staged routes yet.
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            {orderedRoutes.map((route) => (
+              <RouteCard
+                key={route.id}
+                route={route}
+                onLabelChange={handleLabelChange}
+              />
+            ))}
+          </div>
+        )}
       </div>
+    </div>
+  );
+
+
+
+  return (
+    <div style={{ display: "flex", height: "calc(100vh - 60px)", backgroundColor: "#0a0e14" }}>
+      {routeLibrary}
+      <main
+        style={{
+          flex: 1,
+          padding: "1.5rem",
+          overflowY: "auto",
+          backgroundColor: "#0b0f17",
+        }}
+      >
+        <div
+          style={{
+            border: "1px solid #1f2734",
+            borderRadius: "16px",
+            padding: "1.5rem",
+            backgroundColor: "#0f1522",
+            minHeight: "100%",
+          }}
+        >
+          <RoutePoiPanel
+            routeGroupId={activeRouteGroup?.routeGroupId ?? ""}
+            layout="split"
+            sidebarContent={routeSidebar}
+            mapHeight="40vh"
+          />
+        </div>
+      </main>
     </div>
   );
 }
