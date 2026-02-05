@@ -1,4 +1,6 @@
-﻿export type IntensityLabel = "low" | "low-med" | "med" | "med-high" | "high" | "very-high";
+import { buildStudioApiUrl } from "./studioApi";
+
+export type IntensityLabel = "low" | "low-med" | "med" | "med-high" | "high" | "very-high";
 
 export type WeekFocus =
   | "base"
@@ -150,7 +152,7 @@ async function parseErrorResponse(response: Response): Promise<string> {
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
+  const response = await fetch(buildStudioApiUrl(path), {
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers || {}),
@@ -167,7 +169,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function getDraftSeason(): Promise<Season | null> {
-  const response = await fetch("/api/season/draft");
+  const response = await fetch(buildStudioApiUrl("/season/draft"));
   if (response.status === 404) {
     return null;
   }
@@ -179,7 +181,7 @@ export async function getDraftSeason(): Promise<Season | null> {
 }
 
 export async function getPublishedSeason(): Promise<Season | null> {
-  const response = await fetch("/api/season/published");
+  const response = await fetch(buildStudioApiUrl("/season/published"));
   if (response.status === 404) {
     return null;
   }
@@ -191,19 +193,19 @@ export async function getPublishedSeason(): Promise<Season | null> {
 }
 
 export async function createDraftSeason(): Promise<Season> {
-  return requestJson<Season>("/api/season/draft/create", {
+  return requestJson<Season>("/season/draft/create", {
     method: "POST",
   });
 }
 
 export async function publishSeason(): Promise<Season> {
-  return requestJson<Season>("/api/season/publish", {
+  return requestJson<Season>("/season/publish", {
     method: "POST",
   });
 }
 
 export async function mutateDraftSeason(mutation: SeasonMutation): Promise<Season> {
-  return requestJson<Season>("/api/season/draft/mutate", {
+  return requestJson<Season>("/season/draft/mutate", {
     method: "POST",
     body: JSON.stringify(mutation),
   });

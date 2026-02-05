@@ -1,6 +1,6 @@
 ﻿import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route, NavLink, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
 import StudioHome from "../studio/StudioHome";
 import SeasonBuilder from "./screens/SeasonBuilder";
 import WorkoutBuilder from "./screens/WorkoutBuilder";
@@ -8,7 +8,8 @@ import RouteManager from "./screens/RouteManager";
 import EventBuilder from "./screens/EventBuilder";
 import RosterBuilder from "./screens/RosterBuilder";
 import ChallengeBuilder from "./screens/ChallengeBuilder";
-import WorkoutViewer from "./screens/WorkoutViewer";
+
+console.log("[STUDIO] VITE_API_BASE =", import.meta.env.VITE_API_BASE);
 
 // Global styles
 const globalStyles = `
@@ -97,15 +98,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
 );
 
 function AppShell() {
-  const location = useLocation();
-  const showNav = !location.pathname.startsWith("/viewer");
-
   return (
     <>
-      {showNav && <StudioNav />}
+      <StudioNav />
       <Routes>
         <Route path="/" element={<StudioHome />} />
-        <Route path="/viewer" element={<WorkoutViewer />} />
         <Route path="/studio/workouts" element={<WorkoutBuilder />} />
         <Route path="/workouts/:id" element={<WorkoutBuilder />} />
         <Route path="/studio/routes" element={<RouteManager />} />

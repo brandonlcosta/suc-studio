@@ -1,11 +1,12 @@
+import { buildStudioApiUrl } from "./studioApi";
 type Validator<T> = (value: unknown) => asserts value is T;
 type ValidatorFn = (value: unknown) => void;
 
 const API_PATHS: Record<string, string> = {
-  "seasons.json": "/api/seasons",
-  "blocks.json": "/api/blocks",
-  "weeks.json": "/api/weeks",
-  "challenges.json": "/api/challenges",
+  "seasons.json": "/seasons",
+  "blocks.json": "/blocks",
+  "weeks.json": "/weeks",
+  "challenges.json": "/challenges",
 };
 
 function resolveApiPath(fileName: string): string {
@@ -13,7 +14,7 @@ function resolveApiPath(fileName: string): string {
   if (!path) {
     throw new Error(`Unsupported studio data file: ${fileName}`);
   }
-  return path;
+  return buildStudioApiUrl(path);
 }
 
 /**

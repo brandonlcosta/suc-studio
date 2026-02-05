@@ -114,6 +114,8 @@ type RoutePoiRecord = {
   id: string;
   type: string;
   title: string;
+  system?: boolean;
+  locked?: boolean;
   variants?: Record<
     string,
     {
@@ -122,9 +124,40 @@ type RoutePoiRecord = {
       distanceMi: number;
       distanceM: number;
       snapIndex: number;
+      passIndex?: number;
+      direction?: "forward" | "reverse";
     }
+    | Array<{
+        lat: number;
+        lon: number;
+        distanceMi: number;
+        distanceM: number;
+        snapIndex: number;
+        passIndex?: number;
+        direction?: "forward" | "reverse";
+      }>
   >;
 };
+
+type RoutePoiVariantPlacement = {
+  lat: number;
+  lon: number;
+  distanceMi: number;
+  distanceM: number;
+  snapIndex: number;
+  passIndex?: number;
+  direction?: "forward" | "reverse";
+};
+
+type RoutePoiVariantValue = RoutePoiVariantPlacement | RoutePoiVariantPlacement[];
+
+function getPrimaryPlacement(
+  value: RoutePoiVariantValue | undefined
+): RoutePoiVariantPlacement | null {
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value;
+}
 
 interface RoutePoiMapProps {
   routesByVariant: Record<string, ParsedRoute>;
@@ -215,7 +248,8 @@ export default function RoutePoiMap({
     const poiFeaturesByVariant: Record<string, Feature<Geometry, GeoJsonProperties>[]> = {};
     pois.forEach((poi) => {
       const variants = poi.variants || {};
-      Object.entries(variants).forEach(([label, placement]) => {
+      Object.entries(variants).forEach(([label, placementValue]) => {
+        const placement = getPrimaryPlacement(placementValue as RoutePoiVariantValue);
         if (!placement) return;
         if (!poiFeaturesByVariant[label]) poiFeaturesByVariant[label] = [];
         poiFeaturesByVariant[label].push({

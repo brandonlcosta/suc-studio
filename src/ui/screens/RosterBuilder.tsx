@@ -3,9 +3,10 @@ import type { RosterMember } from "../types/studio";
 import { exportJson } from "../utils/storage";
 import { assertRoster } from "../utils/studioValidation";
 import { parseRosterCsv } from "../../utils/parseRosterCsv";
+import { buildStudioApiUrl } from "../utils/studioApi";
 
 const ROSTER_FILE = "roster.json";
-const ROSTER_API = "/api/roster";
+const ROSTER_API = buildStudioApiUrl("/roster");
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);

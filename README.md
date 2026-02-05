@@ -59,6 +59,27 @@ npm run dev
 
 Visit `http://localhost:3000` to open the timeline editor.
 
+## Environment Variables
+
+This service requires a local `.env.local` file.
+
+Required:
+- VITE_API_BASE (broadcast API base URL)
+
+See `.env.example` for details.
+
+## Environment Files
+
+This app uses **Vite**.
+
+Local development config must be placed in:
+
+    .env.local
+
+Vite automatically loads `.env.local`.
+
+See `.env.example` for required variables.
+
 ## Notes
 - Shared data root is resolved via `src/paths.ts`.
 - All workout saves target `suc-shared-data/workouts/workouts.master.json`.

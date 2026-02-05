@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { RouteLabel } from "../types";
 import { LABELS } from "../utils/routeLabels";
 import {
+  deleteRoutePoi,
+  ensureStartFinishPoi,
   getRouteGroup,
   getRoutePois,
   snapRoutePoi,
@@ -14,7 +16,7 @@ import {
 } from "../utils/variantIntersection";
 import SimpleRouteMap from "./SimpleRouteMap";
 
-const POI_TYPES = ["aid", "water", "summit", "fork", "hazard", "viewpoint"];
+const POI_TYPES = ["aid", "water", "summit", "fork", "hazard", "viewpoint", "turnaround"];
 const ROUTE_LABELS = new Set<RouteLabel>(LABELS);
 const VARIANT_PACE_MIN_PER_MI: Record<RouteLabel, number> = {
   MED: 12,
@@ -45,6 +47,34 @@ function formatEtaMinutes(totalMinutes: number): string {
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
+type RoutePoiVariantPlacement = {
+  lat: number;
+  lon: number;
+  distanceMi: number;
+  distanceM: number;
+  snapIndex: number;
+  passIndex?: number;
+  direction?: "forward" | "reverse";
+};
+
+type RoutePoiVariantValue = RoutePoiVariantPlacement | RoutePoiVariantPlacement[];
+
+function asPlacements(value: RoutePoiVariantValue | undefined): RoutePoiVariantPlacement[] {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.filter((entry) => entry && Number.isFinite(entry.distanceMi));
+  }
+  if (Number.isFinite(value.distanceMi)) return [value];
+  return [];
+}
+
+function getPrimaryPlacement(
+  value: RoutePoiVariantValue | undefined
+): RoutePoiVariantPlacement | null {
+  const placements = asPlacements(value);
+  return placements[0] ?? null;
+}
+
 function computePoiWarnings(
   poi: RoutePoiRecord,
   variants: RouteLabel[],
@@ -53,20 +83,11 @@ function computePoiWarnings(
   const warnings: string[] = [];
   const placements = variants
     .map((label) => {
-      const placement = poi.variants?.[label];
+      const placement = getPrimaryPlacement(poi.variants?.[label] as RoutePoiVariantValue);
       if (!placement) return null;
       return { label, placement };
     })
-    .filter(Boolean) as Array<{
-    label: RouteLabel;
-    placement: {
-      lat: number;
-      lon: number;
-      distanceMi: number;
-      distanceM: number;
-      snapIndex: number;
-    };
-  }>;
+    .filter(Boolean) as Array<{ label: RouteLabel; placement: RoutePoiVariantPlacement }>;
 
   if (placements.length >= 2) {
     const distances = placements
@@ -121,6 +142,8 @@ type RoutePoiRecord = {
   id: string;
   type: string;
   title: string;
+  system?: boolean;
+  locked?: boolean;
   variants?: Record<
     string,
     {
@@ -129,7 +152,18 @@ type RoutePoiRecord = {
       distanceMi: number;
       distanceM: number;
       snapIndex: number;
+      passIndex?: number;
+      direction?: "forward" | "reverse";
     }
+    | Array<{
+        lat: number;
+        lon: number;
+        distanceMi: number;
+        distanceM: number;
+        snapIndex: number;
+        passIndex?: number;
+        direction?: "forward" | "reverse";
+      }>
   >;
 };
 
@@ -204,6 +238,8 @@ export default function RoutePoiPanel({
     : "";
   const previewVariant = activeVariantLabel || undefined;
   const canDragPois = Boolean(activeVariantLabel);
+  const activePoi = activePoiId ? pois.find((poi) => poi.id === activePoiId) : null;
+  const isActivePoiLocked = Boolean(activePoi?.locked || activePoi?.system);
   const activeRouteStats = activeVariantLabel
     ? routeStatsByVariant[activeVariantLabel]
     : null;
@@ -243,6 +279,7 @@ export default function RoutePoiPanel({
     };
   }, []);
 
+  // Derived selector output only; never mutate directly.
   const poiWarnings = useMemo(() => {
     const next: Record<string, string[]> = {};
     if (variantOptions.length === 0) return next;
@@ -261,7 +298,9 @@ export default function RoutePoiPanel({
     for (const poi of pois) {
       const byVariant: Partial<Record<RouteLabel, PoiEta>> = {};
       variantOptions.forEach((label) => {
-        const placement = poi.variants?.[label];
+        const placement = getPrimaryPlacement(
+          poi.variants?.[label] as RoutePoiVariantValue | undefined
+        );
         const pace = VARIANT_PACE_MIN_PER_MI[label];
         if (!placement || typeof placement.distanceMi !== "number") return;
         if (!Number.isFinite(placement.distanceMi) || !Number.isFinite(pace)) return;
@@ -282,26 +321,33 @@ export default function RoutePoiPanel({
     if (!activeVariantLabel) return [];
     const pace = VARIANT_PACE_MIN_PER_MI[activeVariantLabel];
     const rows = pois
-      .map((poi) => {
-        const placement = poi.variants?.[activeVariantLabel];
-        if (!placement || !Number.isFinite(placement.distanceMi)) return null;
-        const etaMinutes = placement.distanceMi * pace;
-        return {
-          poiId: poi.id,
-          name: poi.title || poi.id,
-          type: poi.type,
-          distanceMi: placement.distanceMi,
-          etaMinutes,
-          etaLabel: formatEtaMinutes(etaMinutes),
-        };
-      })
-      .filter(Boolean) as Array<{
+      .flatMap((poi) => {
+        const placements = asPlacements(
+          poi.variants?.[activeVariantLabel] as RoutePoiVariantValue | undefined
+        );
+        if (placements.length === 0) return [];
+        return placements
+          .filter((placement) => Number.isFinite(placement.distanceMi))
+          .map((placement, index) => {
+            const etaMinutes = placement.distanceMi * pace;
+            return {
+              poiId: poi.id,
+              name: poi.title || poi.id,
+              type: poi.type,
+              distanceMi: placement.distanceMi,
+              etaMinutes,
+              etaLabel: formatEtaMinutes(etaMinutes),
+              passIndex: placement.passIndex ?? index,
+            };
+          });
+      }) as Array<{
       poiId: string;
       name: string;
       type: string;
       distanceMi: number;
       etaMinutes: number;
       etaLabel: string;
+      passIndex: number;
     }>;
 
     rows.sort((a, b) => a.distanceMi - b.distanceMi);
@@ -456,6 +502,7 @@ export default function RoutePoiPanel({
       };
     }
 
+    // Canonical POIs live in route.pois.json for the route group.
     getRoutePois(routeGroupId)
       .then((data) => {
         if (isMounted) setPois(Array.isArray(data.pois) ? data.pois : []);
@@ -570,12 +617,15 @@ export default function RoutePoiPanel({
     (poi: RoutePoiRecord) => {
       if (!poi.variants) return null;
       if (activeVariantLabel && poi.variants[activeVariantLabel]) {
-        const placement = poi.variants[activeVariantLabel];
-        return { lat: placement.lat, lon: placement.lon };
+        const placement = getPrimaryPlacement(
+          poi.variants[activeVariantLabel] as RoutePoiVariantValue
+        );
+        if (placement) return { lat: placement.lat, lon: placement.lon };
       }
-      const first = Object.values(poi.variants)[0];
-      if (!first) return null;
-      return { lat: first.lat, lon: first.lon };
+      const first = Object.values(poi.variants)[0] as RoutePoiVariantValue | undefined;
+      const placement = getPrimaryPlacement(first);
+      if (!placement) return null;
+      return { lat: placement.lat, lon: placement.lon };
     },
     [activeVariantLabel]
   );
@@ -629,6 +679,7 @@ export default function RoutePoiPanel({
             return [...next, updatedPoi];
           });
           manualVariantOverrideRef.current.delete(updatedPoi.id);
+          setActivePoiId(updatedPoi.id);
         }
         showSnapIndicator(position.lat, position.lon);
         return true;
@@ -757,11 +808,28 @@ export default function RoutePoiPanel({
     }
   };
 
+  const handleEnsureStartFinish = async () => {
+    if (!routeGroupId.trim()) return;
+    setMessage(null);
+    setError(null);
+    try {
+      const result = await ensureStartFinishPoi(routeGroupId);
+      const nextPois = Array.isArray(result.pois) ? (result.pois as RoutePoiRecord[]) : [];
+      setPois(nextPois);
+      setActivePoiId(null);
+      setMessage("Start / Finish POI ensured.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to ensure Start / Finish POI";
+      setError(msg);
+    }
+  };
+
   const handlePoiRowFocus = (poi: RoutePoiRecord) => {
     handlePoiSelect(poi.id);
-    const placement =
-      (activeVariantLabel && poi.variants?.[activeVariantLabel]) ||
-      (poi.variants ? Object.values(poi.variants)[0] : undefined);
+    const placementValue =
+      (activeVariantLabel && (poi.variants?.[activeVariantLabel] as RoutePoiVariantValue)) ||
+      (poi.variants ? (Object.values(poi.variants)[0] as RoutePoiVariantValue) : undefined);
+    const placement = getPrimaryPlacement(placementValue);
     if (!placement) return;
     setMapFocus({
       lat: placement.lat,
@@ -776,6 +844,7 @@ export default function RoutePoiPanel({
     if (!activeVariantLabel) return;
     const target = pois.find((poi) => poi.id === poiId);
     if (!target) return;
+    if (target.system || target.locked) return;
     if (routeVariantGeoms.length === 0) {
       setError("Route data not loaded yet. Wait for the route to render.");
       return;
@@ -813,17 +882,45 @@ export default function RoutePoiPanel({
     }
   };
 
-  const handleDeletePoi = () => {
+  const handleDeletePoi = useCallback(async () => {
     if (!activePoiId) return;
-    const target = pois.find((poi) => poi.id === activePoiId);
-    setPois((prev) => prev.filter((poi) => poi.id !== activePoiId));
-    setActivePoiId(null);
-    resetForm();
-    if (target) {
-      setMessage(`POI deleted (${target.id}).`);
-      console.log("POI_DELETED", { poiId: target.id, routeGroupId });
+    if (!routeGroupId.trim()) {
+      setError("Select a route group before deleting a POI.");
+      return;
     }
-  };
+    setMessage(null);
+    setError(null);
+
+    const target = pois.find((poi) => poi.id === activePoiId);
+    const expectedCount = Math.max(0, pois.length - 1);
+
+    try {
+      const result = await deleteRoutePoi(routeGroupId, activePoiId);
+      const nextPois = Array.isArray(result.pois)
+        ? (result.pois as RoutePoiRecord[])
+        : [];
+      setPois(nextPois);
+      setActivePoiId(null);
+      resetForm();
+
+      if (nextPois.length !== expectedCount) {
+        console.warn("POI_DELETE_MISMATCH", {
+          routeGroupId,
+          poiId: activePoiId,
+          expectedCount,
+          actualCount: nextPois.length,
+        });
+      }
+
+      if (target) {
+        setMessage(`POI deleted (${target.id}).`);
+        console.log("POI_DELETED", { poiId: target.id, routeGroupId });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to delete POI";
+      setError(msg);
+    }
+  }, [activePoiId, pois, resetForm, routeGroupId]);
 
   const handleCopyCueSheet = async () => {
     if (!cueSheetText) {
@@ -968,6 +1065,7 @@ export default function RoutePoiPanel({
                   );
                 }
               }}
+              disabled={isActivePoiLocked}
               style={{ padding: "0.5rem", border: "1px solid #2b2b2b" }}
             >
               <option value="">Select type</option>
@@ -994,6 +1092,7 @@ export default function RoutePoiPanel({
                   );
                 }
               }}
+              disabled={isActivePoiLocked}
               style={{ padding: "0.5rem", border: "1px solid #2b2b2b" }}
               placeholder="Mitchell Canyon Aid"
             />
@@ -1005,7 +1104,7 @@ export default function RoutePoiPanel({
               {variantOptions.map((label) => {
                 const isEditing = Boolean(activePoiId);
                 const isSelected = selectedVariants.includes(label);
-                const isDisabled = isEditing && !isSelected;
+                const isDisabled = (isEditing && !isSelected) || isActivePoiLocked;
                 return (
                   <label
                     key={label}
@@ -1026,24 +1125,46 @@ export default function RoutePoiPanel({
               <button
                 type="button"
                 onClick={handleRecalculateVariants}
-                disabled={!activePoiId || routeVariantGeoms.length === 0}
+                disabled={!activePoiId || routeVariantGeoms.length === 0 || isActivePoiLocked}
                 style={{
                   padding: "0.3rem 0.6rem",
                   borderRadius: "6px",
                   border: "1px solid #2b2b2b",
                   background:
-                    !activePoiId || routeVariantGeoms.length === 0
+                    !activePoiId || routeVariantGeoms.length === 0 || isActivePoiLocked
                       ? "#131a2a"
                       : "#0f1522",
                   color: "#f5f5f5",
                   cursor:
-                    !activePoiId || routeVariantGeoms.length === 0
+                    !activePoiId || routeVariantGeoms.length === 0 || isActivePoiLocked
                       ? "not-allowed"
                       : "pointer",
                   fontSize: "0.75rem",
                 }}
               >
                 Recalculate variants
+              </button>
+              <button
+                type="button"
+                onClick={handleEnsureStartFinish}
+                disabled={!routeGroupId.trim() || routeVariantGeoms.length === 0}
+                style={{
+                  padding: "0.3rem 0.6rem",
+                  borderRadius: "6px",
+                  border: "1px solid #2b2b2b",
+                  background:
+                    !routeGroupId.trim() || routeVariantGeoms.length === 0
+                      ? "#131a2a"
+                      : "#0f1522",
+                  color: "#f5f5f5",
+                  cursor:
+                    !routeGroupId.trim() || routeVariantGeoms.length === 0
+                      ? "not-allowed"
+                      : "pointer",
+                  fontSize: "0.75rem",
+                }}
+              >
+                Add Start / Finish
               </button>
               {variantAssignmentNote && (
                 <span style={{ fontSize: "0.75rem", color: "#7e8798" }}>
@@ -1064,22 +1185,27 @@ export default function RoutePoiPanel({
                 step="0.01"
                 value={placeDistanceMi}
                 onChange={(e) => setPlaceDistanceMi(e.target.value)}
+                disabled={isActivePoiLocked}
                 style={{ padding: "0.5rem", border: "1px solid #2b2b2b", flex: 1 }}
                 placeholder={maxDistanceMi ? `0 - ${maxDistanceMi.toFixed(2)}` : "e.g. 12.5"}
               />
               <button
                 type="button"
                 onClick={handlePlaceAtDistance}
-                disabled={!readyToSnap || !activeVariantLabel}
+                disabled={!readyToSnap || !activeVariantLabel || isActivePoiLocked}
                 style={{
                   padding: "0.45rem 0.75rem",
                   borderRadius: "6px",
                   border: "1px solid #2b2b2b",
                   background:
-                    !readyToSnap || !activeVariantLabel ? "#131a2a" : "#0f1522",
+                    !readyToSnap || !activeVariantLabel || isActivePoiLocked
+                      ? "#131a2a"
+                      : "#0f1522",
                   color: "#f5f5f5",
                   cursor:
-                    !readyToSnap || !activeVariantLabel ? "not-allowed" : "pointer",
+                    !readyToSnap || !activeVariantLabel || isActivePoiLocked
+                      ? "not-allowed"
+                      : "pointer",
                   fontSize: "0.8rem",
                 }}
               >
@@ -1094,21 +1220,77 @@ export default function RoutePoiPanel({
           </div>
 
           {activePoiId && (
-            <div>
+            <div style={{ display: "grid", gap: "0.75rem" }}>
+              <div style={{ display: "grid", gap: "0.35rem" }}>
+                <div style={{ fontSize: "0.85rem", color: "#999999" }}>POI Hits</div>
+                {activePoi?.variants &&
+                Object.keys(activePoi.variants).length > 0 ? (
+                  <div style={{ display: "grid", gap: "0.35rem" }}>
+                    {Object.entries(activePoi.variants)
+                      .sort(([a], [b]) => a.localeCompare(b))
+                      .map(([label, value]) => {
+                        const placements = asPlacements(value as RoutePoiVariantValue);
+                        if (placements.length === 0) {
+                          return (
+                            <div key={`${activePoi.id}-${label}`} style={{ color: "#94a3b8" }}>
+                              {label}: no placements
+                            </div>
+                          );
+                        }
+                        return (
+                          <div key={`${activePoi.id}-${label}`} style={{ color: "#e2e8f0" }}>
+                            <div style={{ fontWeight: 600 }}>{label}</div>
+                            <div style={{ display: "grid", gap: "0.2rem", marginLeft: "0.5rem" }}>
+                              {placements.map((placement, index) => {
+                                const passIndex = placement.passIndex ?? index;
+                                const distanceLabel = Number.isFinite(placement.distanceMi)
+                                  ? `${placement.distanceMi.toFixed(2)} mi`
+                                  : "n/a";
+                                const directionLabel = placement.direction
+                                  ? ` (${placement.direction})`
+                                  : "";
+                                const isStartFinish =
+                                  activePoi?.id === "start-finish" ||
+                                  activePoi?.type === "start-finish";
+                                let passLabel = `Pass ${passIndex + 1}`;
+                                if (isStartFinish) {
+                                  if (passIndex === 0) {
+                                    passLabel = "Start";
+                                  } else if (passIndex === placements.length - 1) {
+                                    passLabel = "Finish";
+                                  }
+                                }
+                                return (
+                                  <div key={`${activePoi.id}-${label}-${passIndex}`}>
+                                    {passLabel}: {distanceLabel}
+                                    {directionLabel}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                ) : (
+                  <div style={{ color: "#666" }}>No variants yet.</div>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={handleDeletePoi}
+                disabled={isActivePoiLocked}
                 style={{
                   padding: "0.4rem 0.75rem",
                   borderRadius: "4px",
                   border: "1px solid #3a1a1a",
-                  background: "#2a1212",
-                  color: "#ffb4b4",
-                  cursor: "pointer",
+                  background: isActivePoiLocked ? "#1f2937" : "#2a1212",
+                  color: isActivePoiLocked ? "#9ca3af" : "#ffb4b4",
+                  cursor: isActivePoiLocked ? "not-allowed" : "pointer",
                   fontSize: "0.8rem",
                 }}
               >
-                Delete POI
+                {isActivePoiLocked ? "System POI (locked)" : "Delete POI"}
               </button>
             </div>
           )}
@@ -1220,12 +1402,44 @@ export default function RoutePoiPanel({
           <tbody>
             {pois.map((poi) => {
               const variants = poi.variants ? Object.keys(poi.variants).sort() : [];
-              const distanceMi = variants
-                .map((label) => {
-                  const value = poi.variants?.[label]?.distanceMi;
-                  return `${label}:${typeof value === "number" ? value.toFixed(2) : "n/a"}`;
-                })
-                .join(", ");
+              const variantSummaries = variants.map((label) => {
+                const value = poi.variants?.[label] as RoutePoiVariantValue | undefined;
+                const placements = asPlacements(value);
+                const isStartFinish = poi.id === "start-finish" || poi.type === "start-finish";
+                if (placements.length > 1) {
+                  if (isStartFinish) {
+                    const sorted = [...placements].sort(
+                      (a, b) => (a.distanceMi ?? 0) - (b.distanceMi ?? 0)
+                    );
+                    const finish = sorted[sorted.length - 1];
+                    const finishLabel =
+                      finish && Number.isFinite(finish.distanceMi)
+                        ? `finish (${finish.distanceMi.toFixed(2)} mi)`
+                        : "finish";
+                    const midLabels = sorted.slice(1, -1).map((placement, index) => {
+                      const distanceLabel = Number.isFinite(placement.distanceMi)
+                        ? `${placement.distanceMi.toFixed(2)} mi`
+                        : "n/a";
+                      return `pass ${index + 2} (${distanceLabel})`;
+                    });
+                    const segments = ["start", ...midLabels, finishLabel].join(", ");
+                    return `${label} - ${segments}`;
+                  }
+                  const distances = placements
+                    .map((entry) =>
+                      Number.isFinite(entry.distanceMi) ? entry.distanceMi.toFixed(2) : "n/a"
+                    )
+                    .join(", ");
+                  return `${label} - ${placements.length} passes (${distances} mi)`;
+                }
+                const single = placements[0];
+                const distanceLabel =
+                  single && Number.isFinite(single.distanceMi)
+                    ? `${single.distanceMi.toFixed(2)} mi`
+                    : "n/a";
+                return `${label} - ${distanceLabel}`;
+              });
+              const distanceMi = variantSummaries.join(" | ");
               const warnings = poiWarnings[poi.id] ?? [];
               const warningText = warnings.join("\n");
               const etas = poiEtas[poi.id] ?? {};
@@ -1271,7 +1485,26 @@ export default function RoutePoiPanel({
                   </td>
                   <td>{poi.id}</td>
                   <td>{poi.type}</td>
-                  <td>{poi.title}</td>
+                  <td>
+                    <span>{poi.title}</span>
+                    {poi.system && (
+                      <span
+                        style={{
+                          marginLeft: "0.5rem",
+                          padding: "0.1rem 0.35rem",
+                          borderRadius: "999px",
+                          fontSize: "0.65rem",
+                          letterSpacing: "0.06em",
+                          textTransform: "uppercase",
+                          background: "#1f2937",
+                          color: "#f9fafb",
+                          border: "1px solid #374151",
+                        }}
+                      >
+                        SYSTEM
+                      </span>
+                    )}
+                  </td>
                   <td>{variants.join(", ")}</td>
                   <td>{distanceMi}</td>
                   {variantOptions.map((label) => (
@@ -1317,7 +1550,7 @@ export default function RoutePoiPanel({
           poiWarnings={poiWarnings}
           poiEtas={poiEtas}
           activePoiId={activePoiId}
-          allowPoiDrag={canDragPois && viewMode === "authoring"}
+          allowPoiDrag={canDragPois && viewMode === "authoring" && !isActivePoiLocked}
           basemap={basemap}
           enableHoverHud={viewMode === "authoring"}
           height={resolvedMapHeight}

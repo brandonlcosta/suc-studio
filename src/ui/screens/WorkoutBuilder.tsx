@@ -15,6 +15,7 @@ import type {
 } from "./WorkoutBuilder/builderTypes";
 import { generateWorkoutNameByTier } from "./WorkoutBuilder/workoutName";
 import type { IntervalSegment, IntervalTarget, TierVariant, Workout, WorkoutsMaster } from "../types";
+import { buildStudioApiUrl } from "../utils/studioApi";
 
 type ViewMode = "builder" | "preview" | "library";
 
@@ -212,7 +213,7 @@ export default function WorkoutBuilder() {
   const [showPublishOverlay, setShowPublishOverlay] = useState(false);
 
   const refreshWorkouts = async () => {
-    const response = await fetch("/api/workouts");
+    const response = await fetch(buildStudioApiUrl("/workouts"));
     if (!response.ok) {
       throw new Error("Failed to load workouts");
     }
@@ -416,7 +417,7 @@ export default function WorkoutBuilder() {
     if (mode !== "builder") return;
     if (!ensureDraftForBuilder()) return;
     try {
-      const response = await fetch("/api/workouts/upsert", {
+      const response = await fetch(buildStudioApiUrl("/workouts/upsert"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...currentWorkout, status: "draft", version: 0 }),
@@ -440,7 +441,7 @@ export default function WorkoutBuilder() {
   const confirmPublish = async () => {
     if (!ensureDraftForBuilder()) return;
     try {
-      const response = await fetch("/api/workouts/publish", {
+      const response = await fetch(buildStudioApiUrl("/workouts/publish"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workout: currentWorkout }),
@@ -463,7 +464,7 @@ export default function WorkoutBuilder() {
   const handleDelete = async () => {
     try {
       if (mode === "builder") {
-        await fetch(`/api/workouts/draft/${currentWorkout.workoutId}`, { method: "DELETE" });
+        await fetch(buildStudioApiUrl(`/workouts/draft/${currentWorkout.workoutId}`), { method: "DELETE" });
         await refreshWorkouts();
         setCurrentWorkout(createDraftWorkout());
         setIsDirty(false);
@@ -472,7 +473,7 @@ export default function WorkoutBuilder() {
       }
 
       if (mode === "preview" && previewWorkout) {
-        await fetch("/api/workouts/archive", {
+        await fetch(buildStudioApiUrl("/workouts/archive"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ workoutId: previewWorkout.workoutId, version: previewWorkout.version }),
@@ -504,7 +505,7 @@ export default function WorkoutBuilder() {
     setCurrentWorkout(duplicate);
     setMode("builder");
     setIsDirty(true);
-    await fetch("/api/workouts/upsert", {
+    await fetch(buildStudioApiUrl("/workouts/upsert"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(duplicate),
@@ -521,7 +522,7 @@ export default function WorkoutBuilder() {
       version: 0,
       publishedAt: null,
     };
-    await fetch("/api/workouts/upsert", {
+    await fetch(buildStudioApiUrl("/workouts/upsert"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(draft),
@@ -540,7 +541,7 @@ export default function WorkoutBuilder() {
       version: 0,
       publishedAt: null,
     };
-    await fetch("/api/workouts/upsert", {
+    await fetch(buildStudioApiUrl("/workouts/upsert"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(duplicate),
@@ -558,7 +559,7 @@ export default function WorkoutBuilder() {
       version: 0,
       publishedAt: null,
     };
-    await fetch("/api/workouts/upsert", {
+    await fetch(buildStudioApiUrl("/workouts/upsert"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(draft),
@@ -570,7 +571,7 @@ export default function WorkoutBuilder() {
   };
 
   const handleArchiveFromLibrary = async (workout: Workout) => {
-    await fetch("/api/workouts/archive", {
+    await fetch(buildStudioApiUrl("/workouts/archive"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ workoutId: workout.workoutId, version: workout.version }),

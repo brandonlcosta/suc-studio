@@ -127,6 +127,78 @@ function normalizeVariantLabel(label: string): string {
   return String(label).toUpperCase();
 }
 
+function getRouteGroupIds(raw: any): string[] {
+  if (!raw || typeof raw !== "object") return [];
+  if (Array.isArray(raw.routeGroupIds)) return raw.routeGroupIds.filter(Boolean);
+  if (Array.isArray(raw.route_group_ids)) return raw.route_group_ids.filter(Boolean);
+  if (Array.isArray(raw.routeGroups)) return raw.routeGroups.filter(Boolean);
+  if (Array.isArray(raw.route_groups)) return raw.route_groups.filter(Boolean);
+  if (typeof raw.routeGroupId === "string") return [raw.routeGroupId];
+  if (typeof raw.route_group_id === "string") return [raw.route_group_id];
+  return [];
+}
+
+function normalizeEventFromCanonical(raw: any) {
+  if (!raw || typeof raw !== "object") {
+    return {
+      eventId: "",
+      eventName: "",
+      eventDescription: "",
+      eventDate: "",
+      eventTime: "",
+      startLocationName: "",
+      startLocationUrl: "",
+      startLocationCoordinates: { lat: 0, lng: 0 },
+      routeGroupIds: [],
+    };
+  }
+
+  return {
+    eventId: raw.eventId ?? raw.event_id ?? raw.id ?? "",
+    eventName: raw.eventName ?? raw.event_name ?? raw.name ?? "",
+    eventDescription:
+      raw.eventDescription ?? raw.event_description ?? raw.description ?? "",
+    eventDate: raw.eventDate ?? raw.event_date ?? "",
+    eventTime: raw.eventTime ?? raw.event_time ?? "",
+    startLocationName:
+      raw.startLocationName ?? raw.start_location_name ?? "",
+    startLocationUrl: raw.startLocationUrl ?? raw.start_location_url ?? "",
+    startLocationCoordinates: raw.startLocationCoordinates
+      ? {
+          lat: raw.startLocationCoordinates.lat ?? 0,
+          lng: raw.startLocationCoordinates.lng ?? 0,
+        }
+      : raw.start_lat != null && raw.start_lng != null
+        ? { lat: raw.start_lat, lng: raw.start_lng }
+        : { lat: 0, lng: 0 },
+    routeGroupIds: getRouteGroupIds(raw),
+  };
+}
+
+function normalizeEventToCanonical(raw: any) {
+  if (!raw || typeof raw !== "object") return raw;
+  const coords = raw.startLocationCoordinates;
+  return {
+    event_id: raw.event_id ?? raw.eventId ?? raw.id ?? "",
+    event_name: raw.event_name ?? raw.eventName ?? raw.name ?? "",
+    event_description:
+      raw.event_description ?? raw.eventDescription ?? raw.description ?? "",
+    event_date: raw.event_date ?? raw.eventDate ?? "",
+    event_time: raw.event_time ?? raw.eventTime ?? "",
+    start_location_name:
+      raw.start_location_name ?? raw.startLocationName ?? "",
+    start_location_url:
+      raw.start_location_url ?? raw.startLocationUrl ?? "",
+    start_lat:
+      raw.start_lat ??
+      (coords && typeof coords.lat === "number" ? coords.lat : 0),
+    start_lng:
+      raw.start_lng ??
+      (coords && typeof coords.lng === "number" ? coords.lng : 0),
+    route_group_ids: getRouteGroupIds(raw),
+  };
+}
+
 /**
  * Save a single GPX variant and ensure route.meta.json includes the label.
  */
@@ -217,6 +289,7 @@ export function deleteRouteVariant(groupId: string, label: string): RouteMeta {
 
 /**
  * Read route.pois.json for a route group (if present).
+ * Canonical POI ownership lives in route.pois.json per route group.
  */
 export function loadRoutePois(groupId: string): RoutePoisDoc {
   const poisPath = path.join(ROUTES_ROOT, groupId, "route.pois.json");
@@ -282,14 +355,26 @@ export function loadRouteVariantGpx(groupId: string, label: string): string {
  * Read events.master.json
  */
 export function loadEventsMaster(): EventsMaster {
-  return readJsonFile<EventsMaster>(EVENTS_MASTER_PATH);
+  const raw = readJsonFile<EventsMaster | { version?: number; events?: any[] }>(
+    EVENTS_MASTER_PATH
+  );
+  const events = Array.isArray(raw.events) ? raw.events : [];
+  return {
+    version: typeof (raw as EventsMaster).version === "number" ? (raw as EventsMaster).version : 1,
+    events: events.map(normalizeEventFromCanonical),
+  };
 }
 
 /**
  * Write events.master.json
  */
 export function saveEventsMaster(data: EventsMaster): void {
-  writeJsonFile(EVENTS_MASTER_PATH, data);
+  const events = Array.isArray(data.events) ? data.events : [];
+  const normalized = {
+    version: typeof data.version === "number" ? data.version : 1,
+    events: events.map(normalizeEventToCanonical),
+  };
+  writeJsonFile(EVENTS_MASTER_PATH, normalized);
 }
 
 /**

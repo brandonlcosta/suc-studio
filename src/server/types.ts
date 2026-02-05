@@ -28,18 +28,24 @@ export interface RoutePoiVariantPlacement {
   distanceMi: number;
   distanceM: number;
   snapIndex: number;
+  passIndex?: number;
+  direction?: "forward" | "reverse";
 }
+
+export type RoutePoiVariantValue = RoutePoiVariantPlacement | RoutePoiVariantPlacement[];
 
 export interface RoutePoi {
   id: string;
   title: string;
   type: string;
+  system?: boolean;
+  locked?: boolean;
   notes?: string;
   drop?: {
     lat: number;
     lon: number;
   };
-  variants: Partial<Record<RouteLabel, RoutePoiVariantPlacement>>;
+  variants: Partial<Record<RouteLabel, RoutePoiVariantValue>>;
 }
 
 export interface RoutePoisDoc {

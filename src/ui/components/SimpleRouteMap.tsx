@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { FeatureCollection } from "geojson";
 import type { ParsedRoute, RouteLabel } from "../types";
+import { buildStudioApiUrl } from "../utils/studioApi";
 import maplibreJsUrl from "maplibre-gl/dist/maplibre-gl.js?url";
 import {
   buildRouteStats,
@@ -15,6 +16,8 @@ type RoutePoiRecord = {
   id: string;
   type: string;
   title: string;
+  system?: boolean;
+  locked?: boolean;
   variants?: Record<
     string,
     {
@@ -23,7 +26,18 @@ type RoutePoiRecord = {
       distanceMi: number;
       distanceM: number;
       snapIndex: number;
+      passIndex?: number;
+      direction?: "forward" | "reverse";
     }
+    | Array<{
+        lat: number;
+        lon: number;
+        distanceMi: number;
+        distanceM: number;
+        snapIndex: number;
+        passIndex?: number;
+        direction?: "forward" | "reverse";
+      }>
   >;
 };
 
@@ -62,6 +76,34 @@ type HoverHudState = {
   elevationFt: number | null;
   gradePct: number | null;
 };
+
+type RoutePoiVariantPlacement = {
+  lat: number;
+  lon: number;
+  distanceMi: number;
+  distanceM: number;
+  snapIndex: number;
+  passIndex?: number;
+  direction?: "forward" | "reverse";
+};
+
+type RoutePoiVariantValue = RoutePoiVariantPlacement | RoutePoiVariantPlacement[];
+
+function asPlacements(value: RoutePoiVariantValue | undefined): RoutePoiVariantPlacement[] {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.filter((entry) => entry && Number.isFinite(entry.distanceMi));
+  }
+  if (Number.isFinite(value.distanceMi)) return [value];
+  return [];
+}
+
+function getPrimaryPlacement(
+  value: RoutePoiVariantValue | undefined
+): RoutePoiVariantPlacement | null {
+  const placements = asPlacements(value);
+  return placements[0] ?? null;
+}
 
 interface SimpleRouteMapProps {
   routeGroupId: string;
@@ -489,7 +531,7 @@ export default function SimpleRouteMap({
         return;
       }
       try {
-        const response = await fetch(`/api/routes/${trimmedGroupId}/gpx/${label}`);
+        const response = await fetch(buildStudioApiUrl(`/routes/${trimmedGroupId}/gpx/${label}`));
         if (!response.ok) {
           throw new Error(`Failed to load preview: ${response.status}`);
         }
@@ -657,8 +699,15 @@ export default function SimpleRouteMap({
         normalizedVariants.includes(String(label).toUpperCase())
       );
 
-      for (const [label, placement] of placements) {
+      for (const [label, placementValue] of placements) {
         const normalizedLabel = String(label).toUpperCase();
+        const primaryPlacement = getPrimaryPlacement(
+          placementValue as RoutePoiVariantValue | undefined
+        );
+        if (!primaryPlacement) continue;
+        const allPlacements = asPlacements(
+          placementValue as RoutePoiVariantValue | undefined
+        );
         const markerKey = `${poi.id}::${normalizedLabel}`;
         const isActiveVariant = normalizedLabel === normalizedActive;
         const isDraggable = allowPoiDrag && isActiveVariant;
@@ -669,10 +718,20 @@ export default function SimpleRouteMap({
           const element = document.createElement("div");
           element.setAttribute("data-poi-id", poi.id);
           element.setAttribute("data-poi-variant", normalizedLabel);
-          const distanceLabel = Number.isFinite(placement.distanceMi)
-            ? `${placement.distanceMi.toFixed(2)} mi`
+          const distanceLabel = Number.isFinite(primaryPlacement.distanceMi)
+            ? `${primaryPlacement.distanceMi.toFixed(2)} mi`
             : "n/a";
-          element.title = `${poiTitle}\nDistance: ${distanceLabel}\nETA (${etaVariantLabel}): ${activeEtaLabel}`;
+          const multiPassLabel =
+            allPlacements.length > 1
+              ? `\nPasses: ${allPlacements
+                  .map((entry) =>
+                    Number.isFinite(entry.distanceMi)
+                      ? `${entry.distanceMi.toFixed(2)} mi`
+                      : "n/a"
+                  )
+                  .join(", ")}`
+              : "";
+          element.title = `${poiTitle}\nDistance: ${distanceLabel}\nETA (${etaVariantLabel}): ${activeEtaLabel}${multiPassLabel}`;
           element.addEventListener("mousedown", (event) => {
             event.stopPropagation();
           });
@@ -689,7 +748,7 @@ export default function SimpleRouteMap({
           });
 
           const marker = new maplibregl.Marker({ element, draggable: isDraggable })
-            .setLngLat([placement.lon, placement.lat])
+            .setLngLat([primaryPlacement.lon, primaryPlacement.lat])
             .addTo(map);
 
           marker.on("dragstart", () => {
@@ -717,12 +776,22 @@ export default function SimpleRouteMap({
             });
           }
         } else {
-          const distanceLabel = Number.isFinite(placement.distanceMi)
-            ? `${placement.distanceMi.toFixed(2)} mi`
+          const distanceLabel = Number.isFinite(primaryPlacement.distanceMi)
+            ? `${primaryPlacement.distanceMi.toFixed(2)} mi`
             : "n/a";
-          entry.element.title = `${poiTitle}\nDistance: ${distanceLabel}\nETA (${etaVariantLabel}): ${activeEtaLabel}`;
+          const multiPassLabel =
+            allPlacements.length > 1
+              ? `\nPasses: ${allPlacements
+                  .map((entry) =>
+                    Number.isFinite(entry.distanceMi)
+                      ? `${entry.distanceMi.toFixed(2)} mi`
+                      : "n/a"
+                  )
+                  .join(", ")}`
+              : "";
+          entry.element.title = `${poiTitle}\nDistance: ${distanceLabel}\nETA (${etaVariantLabel}): ${activeEtaLabel}${multiPassLabel}`;
           if (draggingMarkerKeyRef.current !== markerKey) {
-            entry.marker.setLngLat([placement.lon, placement.lat]);
+            entry.marker.setLngLat([primaryPlacement.lon, primaryPlacement.lat]);
           }
           if (typeof entry.marker.setDraggable === "function") {
             entry.marker.setDraggable(isDraggable);
@@ -759,6 +828,29 @@ export default function SimpleRouteMap({
     routeGroupId,
   ]);
 
+  const poiOverlay = (() => {
+    const activeVariantLabel = variant ? String(variant).toUpperCase() : "";
+    const targetPoiId = hoveredPoiId || highlightedPoiId || activePoiId;
+    if (!targetPoiId || !activeVariantLabel) return null;
+    const poi = pois.find((entry) => entry.id === targetPoiId);
+    if (!poi) return null;
+    const placements = asPlacements(
+      poi.variants?.[activeVariantLabel] as RoutePoiVariantValue | undefined
+    );
+    if (placements.length === 0) return null;
+    const distances = placements
+      .map((entry) =>
+        Number.isFinite(entry.distanceMi) ? entry.distanceMi.toFixed(2) : "n/a"
+      )
+      .join(", ");
+    return {
+      title: poi.title || poi.id,
+      variant: activeVariantLabel,
+      distances,
+      count: placements.length,
+    };
+  })();
+
   const containerHeight = height ?? 360;
   const containerMinHeight = minHeight ?? containerHeight;
 
@@ -772,6 +864,35 @@ export default function SimpleRouteMap({
       }}
     >
       <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />
+      {poiOverlay && (
+        <div
+          style={{
+            position: "absolute",
+            left: 12,
+            bottom: 12,
+            background: "rgba(15, 23, 42, 0.9)",
+            color: "#e2e8f0",
+            border: "1px solid rgba(148, 163, 184, 0.3)",
+            borderRadius: "8px",
+            padding: "0.4rem 0.6rem",
+            fontSize: "0.7rem",
+            pointerEvents: "none",
+            minWidth: "160px",
+            boxShadow: "0 6px 16px rgba(0, 0, 0, 0.35)",
+          }}
+        >
+          <div style={{ fontWeight: 600, color: "#93c5fd", marginBottom: "0.2rem" }}>
+            {poiOverlay.title}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
+            <span>{poiOverlay.variant}</span>
+            <span>{poiOverlay.count} passes</span>
+          </div>
+          <div style={{ marginTop: "0.2rem", color: "#cbd5f5" }}>
+            {poiOverlay.distances} mi
+          </div>
+        </div>
+      )}
       {enableHoverHud && hoverHud && (
         <div
           style={{

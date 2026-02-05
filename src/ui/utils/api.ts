@@ -7,8 +7,8 @@ import type {
   RouteLabel,
   WorkoutsMaster,
 } from "../types";
+import { buildStudioApiUrl } from "./studioApi";
 
-const API_BASE = "/api";
 
 async function parseJsonResponse<T>(response: Response, context: string): Promise<T> {
   const contentType = response.headers.get("content-type") ?? "";
@@ -42,7 +42,7 @@ export async function importGPX(file: File): Promise<ParsedRoute> {
   const formData = new FormData();
   formData.append("gpx", file);
 
-  const response = await fetch(`${API_BASE}/routes/import`, {
+  const response = await fetch(buildStudioApiUrl(`/routes/import`), {
     method: "POST",
     body: formData,
   });
@@ -58,7 +58,7 @@ export async function importGPX(file: File): Promise<ParsedRoute> {
  * List all route groups.
  */
 export async function listRouteGroups(): Promise<RouteGroupSummary[]> {
-  const response = await fetch(`${API_BASE}/routes`);
+  const response = await fetch(buildStudioApiUrl("/routes"));
 
   if (!response.ok) {
     await handleError(response, "Failed to list route groups");
@@ -75,7 +75,7 @@ export async function listRouteGroups(): Promise<RouteGroupSummary[]> {
  * Get a specific route group.
  */
 export async function getRouteGroup(groupId: string): Promise<RouteMeta> {
-  const response = await fetch(`${API_BASE}/routes/${groupId}`);
+  const response = await fetch(buildStudioApiUrl(`/routes/${groupId}`));
 
   if (!response.ok) {
     await handleError(response, "Failed to get route group");
@@ -92,7 +92,7 @@ export async function getRouteVariantPreview(
   label: RouteLabel
 ): Promise<ParsedRoute> {
   const normalized = String(label).toUpperCase() as RouteLabel;
-  const response = await fetch(`${API_BASE}/routes/${groupId}/gpx/${normalized}`);
+  const response = await fetch(buildStudioApiUrl(`/routes/${groupId}/gpx/${normalized}`));
 
   if (!response.ok) {
     await handleError(response, "Failed to load route variant");
@@ -105,7 +105,7 @@ export async function getRouteVariantPreview(
  * Delete a route group.
  */
 export async function deleteRouteGroup(groupId: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/routes/${groupId}`, {
+  const response = await fetch(buildStudioApiUrl(`/routes/${groupId}`), {
     method: "DELETE",
   });
 
@@ -122,7 +122,7 @@ export async function deleteRouteVariant(
   label: RouteLabel
 ): Promise<RouteMeta> {
   const normalized = String(label).toUpperCase() as RouteLabel;
-  const response = await fetch(`${API_BASE}/routes/${groupId}/gpx/${normalized}`, {
+  const response = await fetch(buildStudioApiUrl(`/routes/${groupId}/gpx/${normalized}`), {
     method: "DELETE",
   });
 
@@ -148,7 +148,7 @@ export async function snapRoutePoi(
     variants: RouteLabel[];
   }
 ): Promise<{ success: boolean; poi: unknown; pois: unknown[] }> {
-  const response = await fetch(`${API_BASE}/routes/${groupId}/pois/snap`, {
+  const response = await fetch(buildStudioApiUrl(`/routes/${groupId}/pois/snap`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -182,13 +182,48 @@ export async function getRoutePois(groupId: string): Promise<{
     >;
   }>;
 }> {
-  const response = await fetch(`${API_BASE}/routes/${groupId}/pois`);
+  const response = await fetch(buildStudioApiUrl(`/routes/${groupId}/pois`));
 
   if (!response.ok) {
     await handleError(response, "Failed to load route POIs");
   }
 
   return parseJsonResponse(response, "Get route POIs");
+}
+
+/**
+ * Delete a POI for a route group.
+ */
+export async function deleteRoutePoi(
+  groupId: string,
+  poiId: string
+): Promise<{ success: boolean; poiId: string; deleted: boolean; pois: unknown[] }> {
+  const response = await fetch(buildStudioApiUrl(`/routes/${groupId}/pois/${poiId}`), {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    await handleError(response, "Failed to delete route POI");
+  }
+
+  return parseJsonResponse(response, "Delete route POI");
+}
+
+/**
+ * Ensure Start/Finish POI exists for a route group.
+ */
+export async function ensureStartFinishPoi(
+  groupId: string
+): Promise<{ success: boolean; poi: unknown; pois: unknown[] }> {
+  const response = await fetch(buildStudioApiUrl(`/routes/${groupId}/pois/start-finish`), {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    await handleError(response, "Failed to ensure Start/Finish POI");
+  }
+
+  return parseJsonResponse(response, "Ensure Start/Finish POI");
 }
 
 /**
@@ -202,7 +237,7 @@ export async function saveRouteGroup(
     notes: string;
   }
 ): Promise<{ success: boolean; routeGroupId: string }> {
-  const response = await fetch(`${API_BASE}/routes/${groupId}`, {
+  const response = await fetch(buildStudioApiUrl(`/routes/${groupId}`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ routeGroupId: groupId, ...data }),
@@ -219,7 +254,7 @@ export async function saveRouteGroup(
  * Load events.master.json
  */
 export async function loadEventsMaster(): Promise<EventsMaster> {
-  const response = await fetch(`${API_BASE}/events`);
+  const response = await fetch(buildStudioApiUrl("/events"));
 
   if (!response.ok) {
     await handleError(response, "Failed to load events");
@@ -232,7 +267,7 @@ export async function loadEventsMaster(): Promise<EventsMaster> {
  * Save events.master.json
  */
 export async function saveEventsMaster(data: EventsMaster): Promise<void> {
-  const response = await fetch(`${API_BASE}/events`, {
+  const response = await fetch(buildStudioApiUrl(`/events`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -247,7 +282,7 @@ export async function saveEventsMaster(data: EventsMaster): Promise<void> {
  * Load events.selection.json
  */
 export async function loadEventsSelection(): Promise<EventsSelection> {
-  const response = await fetch(`${API_BASE}/events/selection`);
+  const response = await fetch(buildStudioApiUrl("/events/selection"));
 
   if (!response.ok) {
     await handleError(response, "Failed to load events selection");
@@ -260,7 +295,7 @@ export async function loadEventsSelection(): Promise<EventsSelection> {
  * Save events.selection.json
  */
 export async function saveEventsSelection(data: EventsSelection): Promise<void> {
-  const response = await fetch(`${API_BASE}/events/selection`, {
+  const response = await fetch(buildStudioApiUrl(`/events/selection`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -275,7 +310,7 @@ export async function saveEventsSelection(data: EventsSelection): Promise<void> 
  * Load workouts.master.json
  */
 export async function loadWorkoutsMaster(): Promise<WorkoutsMaster> {
-  const response = await fetch(`${API_BASE}/workouts`);
+  const response = await fetch(buildStudioApiUrl("/workouts"));
 
   if (!response.ok) {
     await handleError(response, "Failed to load workouts");
@@ -288,7 +323,7 @@ export async function loadWorkoutsMaster(): Promise<WorkoutsMaster> {
  * Save workouts.master.json
  */
 export async function saveWorkoutsMaster(data: WorkoutsMaster): Promise<void> {
-  const response = await fetch(`${API_BASE}/workouts`, {
+  const response = await fetch(buildStudioApiUrl(`/workouts`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
