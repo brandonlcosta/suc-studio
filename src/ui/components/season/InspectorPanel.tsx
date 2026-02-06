@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import type { BlockInstance, WeekInstance } from "../../../season";
+import type { BlockInstance, DayAssignment, DayKey, WeekInstance } from "../../../season";
 
 const intensityMap: Record<string, number> = {
   "low": 0,
@@ -15,6 +15,10 @@ type InspectorPanelProps = {
   selectedWeek: WeekInstance | null;
   selectedWeekIndex: number | null;
   selectedWeekStartDate: Date | null;
+  selectedDayKey: DayKey | null;
+  workoutOptions: Array<{ workoutId: string; name: string }>;
+  onUpdateDay: (dayKey: DayKey, patch: Partial<DayAssignment>) => void;
+  onClearDay: (dayKey: DayKey) => void;
 };
 
 function computeWeekScore(week: WeekInstance): number {
@@ -54,10 +58,21 @@ export default function InspectorPanel({
   selectedWeek,
   selectedWeekIndex,
   selectedWeekStartDate,
+  selectedDayKey,
+  workoutOptions,
+  onUpdateDay,
+  onClearDay,
 }: InspectorPanelProps) {
   const weekDateRange = selectedWeekStartDate
     ? `${formatDate(selectedWeekStartDate)} - ${formatDate(addDays(selectedWeekStartDate, 6))}`
     : "-";
+
+  const selectedDayAssignment =
+    selectedWeek && selectedDayKey ? selectedWeek.days?.[selectedDayKey] ?? {} : null;
+
+  const dayLabel = selectedDayKey
+    ? `${selectedDayKey.charAt(0).toUpperCase()}${selectedDayKey.slice(1)}`
+    : null;
 
   return (
     <aside style={panelStyle}>
@@ -120,6 +135,80 @@ export default function InspectorPanel({
               <span style={labelStyle}>Score</span>
               {computeWeekScore(selectedWeek).toFixed(1)} / 5
             </div>
+          </div>
+          <div style={{ marginTop: "1rem" }}>
+            <div style={sectionTitleStyle}>Day</div>
+            {!selectedDayKey && (
+              <div style={{ color: "#9ca3af", fontSize: "0.8rem" }}>
+                Select a day to assign a workout.
+              </div>
+            )}
+            {selectedDayKey && (
+              <div style={{ display: "grid", gap: "0.6rem", fontSize: "0.85rem" }}>
+                <div>
+                  <span style={labelStyle}>Day</span>
+                  {dayLabel}
+                </div>
+                <div style={{ display: "grid", gap: "0.35rem" }}>
+                  <label style={{ fontSize: "0.75rem", color: "#9ca3af" }}>Assigned Workout</label>
+                  <select
+                    value={selectedDayAssignment?.workoutId ?? ""}
+                    onChange={(event) => {
+                      const workoutId = event.target.value || undefined;
+                      onUpdateDay(selectedDayKey, { workoutId });
+                    }}
+                    style={{
+                      padding: "0.4rem 0.5rem",
+                      borderRadius: "6px",
+                      border: "1px solid #1f2937",
+                      backgroundColor: "#0f172a",
+                      color: "#f5f5f5",
+                    }}
+                  >
+                    <option value="">No workout assigned</option>
+                    {workoutOptions.map((option) => (
+                      <option key={option.workoutId} value={option.workoutId}>
+                        {option.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => onClearDay(selectedDayKey)}
+                    disabled={!selectedDayAssignment || (!selectedDayAssignment.workoutId && !selectedDayAssignment.notes)}
+                    style={{
+                      padding: "0.35rem 0.6rem",
+                      borderRadius: "6px",
+                      border: "1px solid #374151",
+                      backgroundColor: "#111827",
+                      color: "#f5f5f5",
+                      cursor: "pointer",
+                      fontSize: "0.75rem",
+                      width: "fit-content",
+                    }}
+                  >
+                    Clear assignment
+                  </button>
+                </div>
+                <div style={{ display: "grid", gap: "0.35rem" }}>
+                  <label style={{ fontSize: "0.75rem", color: "#9ca3af" }}>Notes</label>
+                  <textarea
+                    value={selectedDayAssignment?.notes ?? ""}
+                    onChange={(event) => onUpdateDay(selectedDayKey, { notes: event.target.value })}
+                    placeholder="Optional coach notes for this day"
+                    rows={3}
+                    style={{
+                      padding: "0.45rem 0.6rem",
+                      borderRadius: "6px",
+                      border: "1px solid #1f2937",
+                      backgroundColor: "#0f172a",
+                      color: "#f5f5f5",
+                      resize: "vertical",
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

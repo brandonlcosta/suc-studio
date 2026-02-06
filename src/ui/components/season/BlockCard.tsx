@@ -1,5 +1,5 @@
 import type { DragEvent } from "react";
-import type { BlockInstance, Season, WeekInstance } from "../../../season";
+import type { BlockInstance, DayKey, Season, WeekInstance } from "../../../season";
 import BlockHeader from "./BlockHeader";
 import WeekList from "./WeekList";
 import GhostBlockPreview from "./GhostBlockPreview";
@@ -23,12 +23,14 @@ type BlockCardProps = {
   isBusy: boolean;
   isSelected: boolean;
   selectedWeekId: string | null;
+  selectedDayKey: DayKey | null;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   quickEditWeeks: boolean;
   registerBlockRef: (element: HTMLDivElement | null) => void;
   onSelectBlock: () => void;
   onSelectWeek: (weekId: string) => void;
+  onSelectDay: (weekId: string, dayKey: DayKey) => void;
   onAddBlockAfter: () => void;
   onDeleteBlock: () => void;
   onMoveBlock: (newIndex: number) => void;
@@ -54,6 +56,7 @@ type BlockCardProps = {
   onDragOverWeekPreset: (weekId: string) => void;
   onDropWeekPreset: (weekId: string) => void;
   getPresetLabelForWeek: (week: WeekInstance) => string | null;
+  workoutLabels: Record<string, string>;
 };
 
 export default function BlockCard({
@@ -65,12 +68,14 @@ export default function BlockCard({
   isBusy,
   isSelected,
   selectedWeekId,
+  selectedDayKey,
   isCollapsed,
   onToggleCollapse,
   quickEditWeeks,
   registerBlockRef,
   onSelectBlock,
   onSelectWeek,
+  onSelectDay,
   onAddBlockAfter,
   onDeleteBlock,
   onMoveBlock,
@@ -96,6 +101,7 @@ export default function BlockCard({
   onDragOverWeekPreset,
   onDropWeekPreset,
   getPresetLabelForWeek,
+  workoutLabels,
 }: BlockCardProps) {
   return (
     <div
@@ -162,10 +168,13 @@ export default function BlockCard({
             markersByWeek={markersByWeek}
             isBusy={isBusy}
             selectedWeekId={selectedWeekId}
+            selectedDayKey={selectedDayKey}
             onSelectWeek={onSelectWeek}
+            onSelectDay={onSelectDay}
             onRemoveWeek={onRemoveWeek}
             onUpdateWeek={onUpdateWeek}
             quickEdit={quickEditWeeks}
+            workoutLabels={workoutLabels}
             weekPresetDrag={weekPresetDrag}
             weekPresetTargetId={weekPresetTargetId}
             isWeekPresetDragActive={isWeekPresetDragActive}

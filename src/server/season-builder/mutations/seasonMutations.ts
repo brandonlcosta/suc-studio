@@ -70,6 +70,18 @@ function assertNonEmptyString(value: unknown, label: string): asserts value is s
   }
 }
 
+export function updateSeason(
+  season: Season,
+  partialUpdate: Partial<Pick<Season, "startDate">>
+): Season {
+  const nextSeason: Season = {
+    ...season,
+    ...partialUpdate,
+  };
+  assertSeason(nextSeason);
+  return nextSeason;
+}
+
 export function addBlockAfter(
   season: Season,
   targetBlockId: string,

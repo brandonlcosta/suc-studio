@@ -2,6 +2,12 @@
 
 export type SeasonMutation =
   | {
+      action: "updateSeason";
+      args: {
+        partialUpdate: Partial<Pick<Season, "startDate">>;
+      };
+    }
+  | {
       action: "addBlockAfter";
       args: {
         targetBlockId: string;
@@ -134,6 +140,12 @@ export async function getDraftSeason(): Promise<Season | null> {
     throw new Error(message);
   }
   return (await response.json()) as Season;
+}
+
+export async function ensureDraftSeason(): Promise<Season> {
+  return requestJson<Season>("/api/season/draft/ensure", {
+    method: "POST",
+  });
 }
 
 export async function getPublishedSeason(): Promise<Season | null> {

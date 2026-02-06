@@ -18,6 +18,7 @@ import {
   removeSeasonMarker,
   removeWeekFromBlock,
   shrinkBlock,
+  updateSeason,
   updateBlock,
   updateWeek,
 } from "../season-builder/mutations/seasonMutations.js";
@@ -35,6 +36,7 @@ function isJsonParseError(error: unknown): boolean {
 }
 
 type MutationAction =
+  | "updateSeason"
   | "addBlockAfter"
   | "removeBlock"
   | "moveBlock"
@@ -69,6 +71,44 @@ router.post("/draft/create", async (_req, res) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Create season draft error:", error);
+    return res.status(500).json({ error: message });
+  }
+});
+
+router.post("/draft/ensure", async (_req, res) => {
+  try {
+    let draft: Season | null = null;
+    try {
+      draft = await loadDraftSeason();
+    } catch (error) {
+      if (isJsonParseError(error)) {
+        console.warn("Draft season JSON is corrupted. Overwriting with new draft.");
+      } else if (error && typeof error === "object" && "code" in error) {
+        const code = (error as { code?: string }).code;
+        if (code !== "ENOENT") {
+          throw error;
+        }
+      } else {
+        throw error;
+      }
+    }
+
+    if (draft) {
+      return res.status(200).json(draft);
+    }
+
+    const published = await loadPublishedSeason();
+    if (published) {
+      const next: Season = { ...published, status: "draft" };
+      await saveDraftSeason(next);
+      return res.status(201).json(next);
+    }
+
+    const season = await createNewDraftSeason();
+    return res.status(201).json(season);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Ensure season draft error:", error);
     return res.status(500).json({ error: message });
   }
 });
@@ -109,6 +149,12 @@ router.post("/draft/mutate", async (req, res) => {
     let next: Season;
 
     switch (body.action) {
+      case "updateSeason":
+        next = updateSeason(
+          draft,
+          args.partialUpdate as Partial<Pick<Season, "startDate">>
+        );
+        break;
       case "addBlockAfter":
         next = addBlockAfter(
           draft,

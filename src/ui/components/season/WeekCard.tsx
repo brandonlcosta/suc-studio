@@ -1,4 +1,4 @@
-import type { WeekInstance } from "../../../season";
+import type { DayKey, WeekInstance } from "../../../season";
 import CalendarWeekGrid from "./CalendarWeekGrid";
 import type { WeekPreset } from "./presets";
 import { WEEK_PRESETS } from "./presets";
@@ -21,6 +21,9 @@ type WeekCardProps = {
   onDragOverPreset: () => void;
   onDropPreset: () => void;
   presetLabel: string | null;
+  selectedDayKey: DayKey | null;
+  workoutLabels: Record<string, string>;
+  onSelectDay: (dayKey: DayKey) => void;
 };
 
 export default function WeekCard({
@@ -40,6 +43,9 @@ export default function WeekCard({
   onDragOverPreset,
   onDropPreset,
   presetLabel,
+  selectedDayKey,
+  workoutLabels,
+  onSelectDay,
 }: WeekCardProps) {
   const handleFocusChange = (nextFocus: WeekInstance["focus"]) => {
     if (!nextFocus) {
@@ -153,7 +159,17 @@ export default function WeekCard({
           onFocusChange={handleFocusChange}
         />
         <div style={{ display: "grid", gap: "0.35rem" }}>
-          <CalendarWeekGrid weekStartDate={weekStartDate} compact={quickEdit} />
+          <CalendarWeekGrid
+            weekStartDate={weekStartDate}
+            compact={quickEdit}
+            dayAssignments={week.days}
+            workoutLabels={workoutLabels}
+            selectedDay={isSelected ? selectedDayKey : null}
+            onSelectDay={(dayKey) => {
+              if (isBusy) return;
+              onSelectDay(dayKey);
+            }}
+          />
           <div style={{ display: "flex", gap: "0.3rem", flexWrap: "wrap", color: "#9ca3af" }}>
             <span style={{ fontSize: "0.58rem" }}>Stress: {week.stress}</span>
             <span style={{ fontSize: "0.58rem" }}>Volume: {week.volume}</span>

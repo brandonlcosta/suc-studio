@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createDraftSeason,
-  getDraftSeason,
+  ensureDraftSeason,
   mutateDraftSeason,
   publishSeason,
+  DAY_KEYS,
+  type DayAssignment,
+  type DayKey,
+  type WeekDays,
   type Season,
   type SeasonMutation,
   type WeekInstance,
 } from "../../../season";
+import { loadWorkoutsMaster } from "../../utils/api";
+import type { Workout } from "../../types";
 import BlockList from "./BlockList";
 import SeasonHeader from "./SeasonHeader";
 import SeasonMarkers from "./SeasonMarkers";
@@ -82,6 +88,7 @@ export default function SeasonLayout() {
   const [status, setStatus] = useState<string | null>(null);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [selectedWeekId, setSelectedWeekId] = useState<string | null>(null);
+  const [selectedDayKey, setSelectedDayKey] = useState<DayKey | null>(null);
   const [selectedBlockTemplateId, setSelectedBlockTemplateId] = useState<string | null>(null);
   const [dismissedWarnings, setDismissedWarnings] = useState<Set<string>>(new Set());
   const [quickEditWeeks, setQuickEditWeeks] = useState(false);
@@ -90,6 +97,7 @@ export default function SeasonLayout() {
   const [weekDragIntent, setWeekDragIntent] = useState<WeekDragIntent>(null);
   const [calendarCursorIndex, setCalendarCursorIndex] = useState<number | null>(null);
   const blockRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [workoutOptions, setWorkoutOptions] = useState<Array<{ workoutId: string; name: string }>>([]);
 
   const setActionLoading = useCallback((key: ActionKey, value: boolean) => {
     setLoading((prev) => ({ ...prev, [key]: value }));
@@ -100,8 +108,9 @@ export default function SeasonLayout() {
       setActionLoading("load", true);
       setError(null);
       try {
-        const draft = await getDraftSeason();
+        const draft = await ensureDraftSeason();
         setSeason(draft);
+        setSelectedDayKey(null);
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error";
         setError(message);
@@ -112,6 +121,49 @@ export default function SeasonLayout() {
 
     load();
   }, [setActionLoading]);
+
+  useEffect(() => {
+    const loadWorkouts = async () => {
+      try {
+        const master = await loadWorkoutsMaster();
+        const list = Array.isArray(master.workouts) ? master.workouts : [];
+        const byId = new Map<string, Workout>();
+        const rank = (workout: Workout) => {
+          if (workout.status === "published") return 3;
+          if (workout.status === "draft") return 2;
+          return 1;
+        };
+        for (const workout of list) {
+          if (!workout?.workoutId) continue;
+          const existing = byId.get(workout.workoutId);
+          if (!existing) {
+            byId.set(workout.workoutId, workout);
+            continue;
+          }
+          const existingRank = rank(existing);
+          const nextRank = rank(workout);
+          if (nextRank > existingRank) {
+            byId.set(workout.workoutId, workout);
+            continue;
+          }
+          if (nextRank === existingRank && (workout.version ?? 0) > (existing.version ?? 0)) {
+            byId.set(workout.workoutId, workout);
+          }
+        }
+        const options = Array.from(byId.values())
+          .map((workout) => ({
+            workoutId: workout.workoutId,
+            name: workout.name || workout.workoutId,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        setWorkoutOptions(options);
+      } catch {
+        setWorkoutOptions([]);
+      }
+    };
+
+    loadWorkouts();
+  }, []);
 
   const anchorMonday = useMemo(() => startOfWeekMonday(new Date()), []);
 
@@ -181,6 +233,32 @@ export default function SeasonLayout() {
     return weekStartDateForIndex(selectedWeekIndex);
   }, [selectedWeekIndex, weekStartDateForIndex]);
 
+  const workoutLabels = useMemo(() => {
+    const map: Record<string, string> = {};
+    workoutOptions.forEach((option) => {
+      map[option.workoutId] = option.name;
+    });
+    return map;
+  }, [workoutOptions]);
+
+  const normalizeWeekDays = useCallback((days?: WeekDays): WeekDays => {
+    const base: WeekDays = {
+      mon: {},
+      tue: {},
+      wed: {},
+      thu: {},
+      fri: {},
+      sat: {},
+      sun: {},
+    };
+    if (!days) return base;
+    const next: WeekDays = { ...base };
+    for (const key of DAY_KEYS) {
+      next[key] = { ...base[key], ...(days[key] ?? {}) };
+    }
+    return next;
+  }, []);
+
   const runMutation = useCallback(
     async (mutation: SeasonMutation, actionKey: ActionKey = "mutate") => {
       if (!season) return null;
@@ -211,6 +289,7 @@ export default function SeasonLayout() {
       const next = await createDraftSeason();
       setSeason(next);
       setStatus("Draft created.");
+      setSelectedDayKey(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       setError(message);
@@ -221,6 +300,10 @@ export default function SeasonLayout() {
 
   const handlePublish = useCallback(async () => {
     if (!season) return;
+    if (!season.startDate) {
+      setError("Start date is required before publishing.");
+      return;
+    }
     setActionLoading("publish", true);
     setError(null);
     setStatus(null);
@@ -235,6 +318,19 @@ export default function SeasonLayout() {
       setActionLoading("publish", false);
     }
   }, [season, setActionLoading]);
+
+  const handleUpdateStartDate = useCallback(
+    async (value: string | null) => {
+      if (!season) return;
+      await runMutation(
+        toMutation("updateSeason", {
+          partialUpdate: { startDate: value },
+        }),
+        "mutate"
+      );
+    },
+    [runMutation, season]
+  );
 
   const handleInsertBlockTemplate = useCallback(
     async (template: BlockTemplate, targetBlockId?: string | null) => {
@@ -258,6 +354,7 @@ export default function SeasonLayout() {
 
       setSelectedBlockId(newBlock.blockId);
       setSelectedWeekId(null);
+      setSelectedDayKey(null);
 
       let current = added;
       const desiredCount = template.weeks.length;
@@ -359,6 +456,7 @@ export default function SeasonLayout() {
 
       setSelectedBlockId(target.blockId);
       setSelectedWeekId(weekId);
+      setSelectedDayKey(null);
       setStatus(`${preset.name} applied.`);
     },
     [allWeeks, loading.mutate, runMutation, season]
@@ -375,12 +473,68 @@ export default function SeasonLayout() {
   const handleSelectBlock = useCallback((blockId: string) => {
     setSelectedBlockId(blockId);
     setSelectedWeekId(null);
+    setSelectedDayKey(null);
   }, []);
 
   const handleSelectWeek = useCallback((blockId: string, weekId: string) => {
     setSelectedBlockId(blockId);
     setSelectedWeekId(weekId);
+    setSelectedDayKey(null);
   }, []);
+
+  const handleSelectDay = useCallback((blockId: string, weekId: string, dayKey: DayKey) => {
+    setSelectedBlockId(blockId);
+    setSelectedWeekId(weekId);
+    setSelectedDayKey(dayKey);
+  }, []);
+
+  const handleUpdateDay = useCallback(
+    async (dayKey: DayKey, patch: Partial<DayAssignment>) => {
+      if (!season || !selectedWeekId) return;
+      const target = allWeeks.find((entry) => entry.week.weekId === selectedWeekId);
+      if (!target) return;
+      const baseDays = normalizeWeekDays(target.week.days);
+      const nextDay = { ...baseDays[dayKey], ...patch };
+      if (nextDay.workoutId === "") {
+        delete nextDay.workoutId;
+      }
+      const nextDays: WeekDays = {
+        ...baseDays,
+        [dayKey]: nextDay,
+      };
+      await runMutation(
+        toMutation("updateWeek", {
+          blockId: target.blockId,
+          weekId: target.week.weekId,
+          partialUpdate: { days: nextDays },
+        }),
+        "mutate"
+      );
+    },
+    [allWeeks, normalizeWeekDays, runMutation, season, selectedWeekId]
+  );
+
+  const handleClearDay = useCallback(
+    async (dayKey: DayKey) => {
+      if (!season || !selectedWeekId) return;
+      const target = allWeeks.find((entry) => entry.week.weekId === selectedWeekId);
+      if (!target) return;
+      const baseDays = normalizeWeekDays(target.week.days);
+      const nextDays: WeekDays = {
+        ...baseDays,
+        [dayKey]: {},
+      };
+      await runMutation(
+        toMutation("updateWeek", {
+          blockId: target.blockId,
+          weekId: target.week.weekId,
+          partialUpdate: { days: nextDays },
+        }),
+        "mutate"
+      );
+    },
+    [allWeeks, normalizeWeekDays, runMutation, season, selectedWeekId]
+  );
 
   const handleScrollToBlock = useCallback((blockId: string) => {
     const target = blockRefs.current[blockId];
@@ -500,6 +654,7 @@ export default function SeasonLayout() {
         isPublishing={loading.publish}
         onCreateDraft={handleCreateDraft}
         onPublish={handlePublish}
+        onUpdateStartDate={handleUpdateStartDate}
       />
 
       <SeasonWarnings season={season} dismissedIds={dismissedWarnings} onDismiss={handleDismissWarning} />
@@ -638,6 +793,7 @@ export default function SeasonLayout() {
               isBusy={isBusy}
               selectedBlockId={selectedBlockId}
               selectedWeekId={selectedWeekId}
+              selectedDayKey={selectedDayKey}
               collapsedBlockIds={collapsedBlocks}
               onToggleCollapse={handleToggleCollapse}
               quickEditWeeks={quickEditWeeks}
@@ -646,6 +802,7 @@ export default function SeasonLayout() {
               }}
               onSelectBlock={handleSelectBlock}
               onSelectWeek={handleSelectWeek}
+              onSelectDay={handleSelectDay}
               onAddBlockAfter={(blockId) =>
                 runMutation(toMutation("addBlockAfter", { targetBlockId: blockId }))
               }
@@ -689,6 +846,7 @@ export default function SeasonLayout() {
               onDragOverWeekPreset={handleWeekPresetDragOver}
               onDropWeekPreset={handleWeekPresetDrop}
               getPresetLabelForWeek={getPresetLabelForWeek}
+              workoutLabels={workoutLabels}
             />
           </div>
           <InspectorPanel
@@ -696,6 +854,10 @@ export default function SeasonLayout() {
             selectedWeek={selectedWeek}
             selectedWeekIndex={selectedWeekIndex}
             selectedWeekStartDate={selectedWeekStartDate}
+            selectedDayKey={selectedDayKey}
+            workoutOptions={workoutOptions}
+            onUpdateDay={handleUpdateDay}
+            onClearDay={handleClearDay}
           />
         </div>
       )}

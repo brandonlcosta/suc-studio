@@ -1,5 +1,8 @@
 ﻿import type {
   BlockInstance,
+  DayAssignment,
+  DayKey,
+  WeekDays,
   IntensityLabel,
   Season,
   SeasonMarker,
@@ -30,6 +33,7 @@ const WEEK_FOCUS_LABELS: WeekFocus[] = [
 ];
 
 const SEASON_STATUSES: SeasonStatus[] = ["draft", "published"];
+const DAY_KEYS: DayKey[] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) {
@@ -57,6 +61,26 @@ function assertWeekFocus(value: unknown, path: string): asserts value is WeekFoc
   assert(isValid, `${path} must be a valid focus label or null.`);
 }
 
+function assertDayAssignment(value: unknown, path: string): asserts value is DayAssignment {
+  assert(typeof value === "object" && value !== null, `${path} must be an object.`);
+  const assignment = value as DayAssignment;
+  if (assignment.workoutId !== undefined) {
+    assertNonEmptyString(assignment.workoutId, `${path}.workoutId`);
+  }
+  if (assignment.notes !== undefined) {
+    assert(typeof assignment.notes === "string", `${path}.notes must be a string.`);
+  }
+}
+
+function assertWeekDays(value: unknown, path: string): asserts value is WeekDays {
+  assert(typeof value === "object" && value !== null, `${path} must be an object.`);
+  const days = value as WeekDays;
+  for (const key of DAY_KEYS) {
+    assert(key in days, `${path}.${key} is required when days is provided.`);
+    assertDayAssignment(days[key], `${path}.${key}`);
+  }
+}
+
 function assertWeekInstance(value: unknown, path: string): asserts value is WeekInstance {
   assert(typeof value === "object" && value !== null, `${path} must be an object.`);
   const week = value as WeekInstance;
@@ -65,6 +89,9 @@ function assertWeekInstance(value: unknown, path: string): asserts value is Week
   assertIntensityLabel(week.stress, `${path}.stress`);
   assertIntensityLabel(week.volume, `${path}.volume`);
   assertIntensityLabel(week.intensity, `${path}.intensity`);
+  if (week.days !== undefined) {
+    assertWeekDays(week.days, `${path}.days`);
+  }
 }
 
 function assertBlockInstance(value: unknown, path: string): asserts value is BlockInstance {
@@ -99,6 +126,9 @@ export function assertSeason(value: unknown): asserts value is Season {
   const season = value as Season;
   assertNonEmptyString(season.seasonId, "season.seasonId");
   assert(SEASON_STATUSES.includes(season.status), "season.status must be draft or published.");
+  if (season.startDate !== undefined && season.startDate !== null) {
+    assertNonEmptyString(season.startDate, "season.startDate");
+  }
   assertDenseArray(season.blocks, "season.blocks");
   assert(season.blocks.length >= 1, "season.blocks must contain at least one block.");
   for (let i = 0; i < season.blocks.length; i += 1) {

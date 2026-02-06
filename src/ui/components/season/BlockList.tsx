@@ -1,6 +1,6 @@
 import type { DragEvent } from "react";
 import { useState } from "react";
-import type { BlockInstance, Season, WeekInstance } from "../../../season";
+import type { BlockInstance, DayKey, Season, WeekInstance } from "../../../season";
 import BlockCard from "./BlockCard";
 import type { BlockTemplate, WeekPreset } from "./presets";
 
@@ -20,12 +20,14 @@ type BlockListProps = {
   isBusy: boolean;
   selectedBlockId: string | null;
   selectedWeekId: string | null;
+  selectedDayKey: DayKey | null;
   collapsedBlockIds: Set<string>;
   onToggleCollapse: (blockId: string) => void;
   quickEditWeeks: boolean;
   registerBlockRef: (blockId: string, element: HTMLDivElement | null) => void;
   onSelectBlock: (blockId: string) => void;
   onSelectWeek: (blockId: string, weekId: string) => void;
+  onSelectDay: (blockId: string, weekId: string, dayKey: DayKey) => void;
   onAddBlockAfter: (blockId: string) => void;
   onDeleteBlock: (blockId: string) => void;
   onMoveBlock: (blockId: string, newIndex: number) => void;
@@ -47,6 +49,7 @@ type BlockListProps = {
   onDragOverWeekPreset: (weekId: string) => void;
   onDropWeekPreset: (weekId: string) => void;
   getPresetLabelForWeek: (week: WeekInstance) => string | null;
+  workoutLabels: Record<string, string>;
 };
 
 export default function BlockList({
@@ -56,12 +59,14 @@ export default function BlockList({
   isBusy,
   selectedBlockId,
   selectedWeekId,
+  selectedDayKey,
   collapsedBlockIds,
   onToggleCollapse,
   quickEditWeeks,
   registerBlockRef,
   onSelectBlock,
   onSelectWeek,
+  onSelectDay,
   onAddBlockAfter,
   onDeleteBlock,
   onMoveBlock,
@@ -83,6 +88,7 @@ export default function BlockList({
   onDragOverWeekPreset,
   onDropWeekPreset,
   getPresetLabelForWeek,
+  workoutLabels,
 }: BlockListProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -157,12 +163,14 @@ export default function BlockList({
           isBusy={isBusy}
           isSelected={selectedBlockId === block.blockId}
           selectedWeekId={selectedWeekId}
+          selectedDayKey={selectedDayKey}
           isCollapsed={collapsedBlockIds.has(block.blockId)}
           onToggleCollapse={() => onToggleCollapse(block.blockId)}
           quickEditWeeks={quickEditWeeks}
           registerBlockRef={(element) => registerBlockRef(block.blockId, element)}
           onSelectBlock={() => onSelectBlock(block.blockId)}
           onSelectWeek={(weekId) => onSelectWeek(block.blockId, weekId)}
+          onSelectDay={(weekId, dayKey) => onSelectDay(block.blockId, weekId, dayKey)}
           onAddBlockAfter={() => onAddBlockAfter(block.blockId)}
           onDeleteBlock={() => onDeleteBlock(block.blockId)}
           onMoveBlock={(newIndex) => onMoveBlock(block.blockId, newIndex)}
@@ -188,6 +196,7 @@ export default function BlockList({
           onDragOverWeekPreset={onDragOverWeekPreset}
           onDropWeekPreset={onDropWeekPreset}
           getPresetLabelForWeek={getPresetLabelForWeek}
+          workoutLabels={workoutLabels}
         />
       ))}
     </section>
