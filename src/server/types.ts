@@ -36,16 +36,24 @@ export type RoutePoiVariantValue = RoutePoiVariantPlacement | RoutePoiVariantPla
 
 export interface RoutePoi {
   id: string;
-  title: string;
+  title?: string;
+  label?: string;
   type: string;
   system?: boolean;
   locked?: boolean;
   notes?: string;
+  routePointIndex?: number;
+  metadata?: {
+    water?: boolean;
+    nutrition?: boolean;
+    crewAccess?: boolean;
+    dropBags?: boolean;
+  };
   drop?: {
     lat: number;
     lon: number;
   };
-  variants: Partial<Record<RouteLabel, RoutePoiVariantValue>>;
+  variants?: Partial<Record<RouteLabel, RoutePoiVariantValue>>;
 }
 
 export interface RoutePoisDoc {
@@ -90,6 +98,7 @@ export interface Event {
   eventDescription: string;
   eventDate?: string;
   eventTime?: string;
+  type?: "crew-run" | "training-run" | "race" | "camp" | "social";
   startLocationName?: string;
   startLocationUrl?: string;
   startLocationCoordinates?: {
@@ -134,6 +143,21 @@ export interface RosterMember {
 export type WorkoutStatus = "draft" | "published" | "archived";
 export type TargetType = "pace" | "hr" | "power";
 export type TierLabel = "MED" | "LRG" | "XL" | "XXL";
+export type WorkoutDomain = "run" | "strength";
+export type StrengthWorkoutType =
+  | "strength_lower"
+  | "strength_upper"
+  | "strength_general"
+  | "mobility"
+  | "circuit"
+  | "crosstrain";
+
+export type WorkoutRouteMode = "fixed-sections";
+
+export interface WorkoutSectionEffort {
+  sectionKey: string;
+  effort: string;
+}
 
 export interface IntervalTarget {
   type: TargetType;
@@ -160,15 +184,57 @@ export interface TierVariant {
   structure: IntervalSegment[];
 }
 
+export interface StrengthExerciseBlock {
+  type: "strength_exercise";
+  id: string;
+  name: string;
+  sets?: number;
+  reps?: string;
+  load?: string;
+  notes?: string;
+}
+
+export interface CircuitBlock {
+  type: "circuit_block";
+  id: string;
+  rounds: number;
+  exercises: StrengthExerciseBlock[];
+}
+
+export interface CrosstrainBlock {
+  type: "crosstrain_block";
+  id: string;
+  modality: "bike" | "row" | "swim" | "elliptical" | "hike";
+  duration: string;
+  target?: string;
+  notes?: string;
+}
+
+export interface MobilityBlock {
+  type: "mobility_block";
+  id: string;
+  name: string;
+  duration: string;
+  cues?: string;
+}
+
+export type StrengthBlock = StrengthExerciseBlock | CircuitBlock | CrosstrainBlock | MobilityBlock;
+
 export interface Workout {
   workoutId: string; // kebab-case ID
   version: number; // 0 for draft, 1+ for published
   status: WorkoutStatus;
+  domain?: WorkoutDomain;
+  strengthType?: StrengthWorkoutType | null;
   name: string; // Narrative title
   description: string;
   focus: string[]; // Tags like ["threshold", "tempo"]
   coachNotes: string; // Execution guidance
-  tiers: Partial<Record<TierLabel, TierVariant>>; // At least one tier must exist
+  tiers: Partial<Record<TierLabel, TierVariant>>; // At least one tier must exist for run workouts
+  strengthStructure?: StrengthBlock[];
+  routeId?: string | null;
+  routeMode?: WorkoutRouteMode | null;
+  sectionEfforts?: WorkoutSectionEffort[];
   createdAt: string; // ISO8601
   updatedAt: string; // ISO8601
   publishedAt: string | null; // ISO8601, null if never published
@@ -177,4 +243,24 @@ export interface Workout {
 export interface WorkoutsMaster {
   version: number;
   workouts: Workout[];
+}
+
+// Route Intel types
+export type RouteIntelSectionMode = "race" | "all-poi";
+
+export interface RouteIntelRoute {
+  routeId: string;
+  distanceVariantIds: string[];
+  sectionMode?: RouteIntelSectionMode;
+  enabledPoiIds?: string[];
+}
+
+export interface RouteIntelDoc {
+  id: string;
+  type: "route-intel";
+  eventId: string;
+  routes: RouteIntelRoute[];
+  visibility: "public" | "private";
+  createdAt: string;
+  updatedAt: string;
 }

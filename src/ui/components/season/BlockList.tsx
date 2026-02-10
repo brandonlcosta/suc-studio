@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { BlockInstance, DayKey, Season, WeekInstance } from "../../../season";
 import BlockCard from "./BlockCard";
 import type { BlockTemplate, WeekPreset } from "./presets";
+import type { EventSummary } from "../../hooks/useEvents";
 
 type WeekWithIndex = {
   blockId: string;
@@ -50,6 +51,7 @@ type BlockListProps = {
   onDropWeekPreset: (weekId: string) => void;
   getPresetLabelForWeek: (week: WeekInstance) => string | null;
   workoutLabels: Record<string, string>;
+  eventLookup: Record<string, EventSummary>;
 };
 
 export default function BlockList({
@@ -89,6 +91,7 @@ export default function BlockList({
   onDropWeekPreset,
   getPresetLabelForWeek,
   workoutLabels,
+  eventLookup,
 }: BlockListProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -197,6 +200,7 @@ export default function BlockList({
           onDropWeekPreset={onDropWeekPreset}
           getPresetLabelForWeek={getPresetLabelForWeek}
           workoutLabels={workoutLabels}
+          eventLookup={eventLookup}
         />
       ))}
     </section>

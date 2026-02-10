@@ -9,7 +9,11 @@ import * as React from "react";
  *   - "Xmin"
  *   - "Ysec"
  *   - "Xmin Ysec"
- *   - or null (if allowNull=true and both fields empty)
+ *   - "Xhr"
+ *   - "Xhr Ymin"
+ *   - "Xhr Ymin Ysec"
+ *   - "Xhr Ysec"
+ *   - or null (if allowNull=true and all fields empty)
  *
  * Never emits numbers or partial values.
  */
@@ -19,9 +23,11 @@ interface DurationInputProps {
   onChange: (value: string | null) => void;
   disabled?: boolean;
   allowNull?: boolean;
+  allowHours?: boolean;
 }
 
 type DurationFields = {
+  hours: number | "";
   minutes: number | "";
   seconds: number | "";
 };
@@ -32,19 +38,24 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function parseDuration(value: string | null | undefined): DurationFields {
-  if (!value) return { minutes: "" as "", seconds: "" as "" };
+function parseDuration(
+  value: string | null | undefined,
+  allowHours: boolean
+): DurationFields {
+  if (!value) return { hours: "" as "", minutes: "" as "", seconds: "" as "" };
 
   const raw = value.toLowerCase();
 
+  const hrMatch = raw.match(/(\d+)\s*hr/);
   const minMatch = raw.match(/(\d+)\s*min/);
   const secMatch = raw.match(/(\d+)\s*sec/);
 
+  let hours = hrMatch ? parseInt(hrMatch[1], 10) : 0;
   let minutes = minMatch ? parseInt(minMatch[1], 10) : 0;
   let seconds = secMatch ? parseInt(secMatch[1], 10) : 0;
 
   // Bare number fallback ? minutes
-  if (!minMatch && !secMatch) {
+  if (!hrMatch && !minMatch && !secMatch) {
     const bare = raw.match(/(\d+)/);
     if (bare) minutes = parseInt(bare[1], 10);
   }
@@ -56,27 +67,47 @@ function parseDuration(value: string | null | undefined): DurationFields {
     seconds = seconds % 60;
   }
 
-  minutes = clamp(minutes, 0, 99);
+  if (!allowHours && hours > 0) {
+    minutes += hours * 60;
+    hours = 0;
+  }
+
+  if (allowHours && minutes > 59) {
+    const carry = Math.floor(minutes / 60);
+    hours += carry;
+    minutes = minutes % 60;
+  }
+
+  hours = clamp(hours, 0, 99);
+  minutes = clamp(minutes, 0, allowHours ? 59 : 99);
   seconds = clamp(seconds, 0, 59);
 
   return {
+    hours: hours === 0 ? ("" as "") : hours,
     minutes: minutes === 0 ? ("" as "") : minutes,
     seconds: seconds === 0 ? ("" as "") : seconds,
   };
 }
 
 function formatDuration(
+  hours: number | "",
   minutes: number | "",
   seconds: number | "",
-  allowNull: boolean
+  allowNull: boolean,
+  allowHours: boolean
 ): string | null {
+  const hasHours = allowHours && hours !== "" && hours > 0;
   const hasMin = minutes !== "" && minutes > 0;
   const hasSec = seconds !== "" && seconds > 0;
 
-  if (!hasMin && !hasSec) {
+  if (!hasHours && !hasMin && !hasSec) {
     return allowNull ? null : "5min";
   }
 
+  if (hasHours && hasMin && hasSec) return `${hours}hr ${minutes}min ${seconds}sec`;
+  if (hasHours && hasMin) return `${hours}hr ${minutes}min`;
+  if (hasHours && hasSec) return `${hours}hr ${seconds}sec`;
+  if (hasHours) return `${hours}hr`;
   if (hasMin && hasSec) return `${minutes}min ${seconds}sec`;
   if (hasMin) return `${minutes}min`;
   return `${seconds}sec`;
@@ -89,21 +120,36 @@ export default function DurationInput({
   onChange,
   disabled = false,
   allowNull = false,
+  allowHours = false,
 }: DurationInputProps) {
   const [fields, setFields] = React.useState<DurationFields>(() =>
-    parseDuration(value)
+    parseDuration(value, allowHours)
   );
 
   // Sync local draft ONLY when parent value changes
   React.useEffect(() => {
-    setFields(parseDuration(value));
-  }, [value]);
+    setFields(parseDuration(value, allowHours));
+  }, [value, allowHours]);
 
   // Contract: only emit formatted string or null (never numbers/partials).
   const commit = (next: DurationFields) => {
-    const serialized = formatDuration(next.minutes, next.seconds, allowNull);
+    const serialized = formatDuration(next.hours, next.minutes, next.seconds, allowNull, allowHours);
     console.log("[DurationInput onChange]", serialized);
     onChange(serialized);
+  };
+
+  const updateHours = (raw: string) => {
+    if (raw === "") {
+      const next = { ...fields, hours: "" as "" };
+      setFields(next);
+      commit(next);
+      return;
+    }
+
+    const hours = clamp(parseInt(raw, 10) || 0, 0, 99);
+    const next = { ...fields, hours };
+    setFields(next);
+    commit(next);
   };
 
   const updateMinutes = (raw: string) => {
@@ -114,8 +160,17 @@ export default function DurationInput({
       return;
     }
 
-    const minutes = clamp(parseInt(raw, 10) || 0, 0, 99);
-    const next = { ...fields, minutes };
+    let minutes = parseInt(raw, 10) || 0;
+    let hours = fields.hours === "" ? 0 : fields.hours;
+
+    if (allowHours && minutes > 59) {
+      const carry = Math.floor(minutes / 60);
+      hours = clamp(hours + carry, 0, 99);
+      minutes = minutes % 60;
+    }
+
+    minutes = clamp(minutes, 0, allowHours ? 59 : 99);
+    const next = { ...fields, hours: hours === 0 ? ("" as "") : hours, minutes };
     setFields(next);
     commit(next);
   };
@@ -130,15 +185,24 @@ export default function DurationInput({
 
     let seconds = parseInt(raw, 10) || 0;
     let minutes = fields.minutes === "" ? 0 : fields.minutes;
+    let hours = fields.hours === "" ? 0 : fields.hours;
 
     if (seconds > 59) {
       const carry = Math.floor(seconds / 60);
-      minutes = clamp(minutes + carry, 0, 99);
+      minutes = minutes + carry;
       seconds = seconds % 60;
     }
 
+    if (allowHours && minutes > 59) {
+      const carry = Math.floor(minutes / 60);
+      hours = clamp(hours + carry, 0, 99);
+      minutes = minutes % 60;
+    }
+
+    const clampedMinutes = clamp(minutes, 0, allowHours ? 59 : 99);
     const next: DurationFields = {
-      minutes: minutes === 0 ? ("" as "") : minutes,
+      hours: hours === 0 ? ("" as "") : hours,
+      minutes: clampedMinutes === 0 ? ("" as "") : clampedMinutes,
       seconds: clamp(seconds, 0, 59),
     };
 
@@ -146,17 +210,38 @@ export default function DurationInput({
     commit(next);
   };
 
+  const showHours = allowHours;
+  const labelColumns = showHours ? "1fr 1fr 1fr" : "1fr 1fr";
+  const inputColumns = showHours ? "1fr auto 1fr auto 1fr" : "1fr auto 1fr";
+
   return (
     <div style={containerStyle}>
-      <div style={labelRowStyle}>
+      <div style={{ ...labelRowStyle, gridTemplateColumns: labelColumns }}>
+        {showHours && <span style={unitLabelStyle}>hr</span>}
         <span style={unitLabelStyle}>min</span>
         <span style={unitLabelStyle}>sec</span>
       </div>
-      <div style={boxStyle}>
+      <div style={{ ...boxStyle, gridTemplateColumns: inputColumns }}>
+        {showHours && (
+          <>
+            <input
+              type="number"
+              min={0}
+              max={99}
+              step={1}
+              value={fields.hours}
+              onChange={(e) => updateHours(e.target.value)}
+              placeholder="0"
+              disabled={disabled}
+              style={inputStyle}
+            />
+            <div style={dividerStyle} />
+          </>
+        )}
         <input
           type="number"
           min={0}
-          max={99}
+          max={allowHours ? 59 : 99}
           step={1}
           value={fields.minutes}
           onChange={(e) => updateMinutes(e.target.value)}

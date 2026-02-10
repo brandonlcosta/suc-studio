@@ -41,23 +41,29 @@ const parseZoneNumber = (target: string): number | null => {
 const parseDurationToMinutes = (value: string | null) => {
   if (!value) return null;
   const raw = value.toLowerCase();
+  const hrMatch = raw.match(/(\d+)\s*(hr|hrs|hour|hours)/);
   const minMatch = raw.match(/(\d+)\s*min/);
   const secMatch = raw.match(/(\d+)\s*sec/);
 
+  let hours = hrMatch ? parseInt(hrMatch[1], 10) : 0;
   let minutes = minMatch ? parseInt(minMatch[1], 10) : 0;
   let seconds = secMatch ? parseInt(secMatch[1], 10) : 0;
 
-  if (!minMatch && !secMatch) {
+  if (!hrMatch && !minMatch && !secMatch) {
     const bare = raw.match(/(\d+)/);
     if (bare) minutes = parseInt(bare[1], 10);
   }
 
-  if (Number.isNaN(minutes) || Number.isNaN(seconds)) return null;
+  if (Number.isNaN(hours) || Number.isNaN(minutes) || Number.isNaN(seconds)) return null;
 
   if (seconds > 59) {
     const carry = Math.floor(seconds / 60);
     minutes += carry;
     seconds = seconds % 60;
+  }
+
+  if (hours > 0) {
+    minutes += hours * 60;
   }
 
   return minutes + seconds / 60;

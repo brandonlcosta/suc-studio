@@ -4,6 +4,7 @@ import BlockHeader from "./BlockHeader";
 import WeekList from "./WeekList";
 import GhostBlockPreview from "./GhostBlockPreview";
 import type { BlockTemplate, WeekPreset } from "./presets";
+import type { EventSummary } from "../../hooks/useEvents";
 
 type WeekWithIndex = {
   blockId: string;
@@ -57,6 +58,7 @@ type BlockCardProps = {
   onDropWeekPreset: (weekId: string) => void;
   getPresetLabelForWeek: (week: WeekInstance) => string | null;
   workoutLabels: Record<string, string>;
+  eventLookup: Record<string, EventSummary>;
 };
 
 export default function BlockCard({
@@ -102,6 +104,7 @@ export default function BlockCard({
   onDropWeekPreset,
   getPresetLabelForWeek,
   workoutLabels,
+  eventLookup,
 }: BlockCardProps) {
   return (
     <div
@@ -175,6 +178,7 @@ export default function BlockCard({
             onUpdateWeek={onUpdateWeek}
             quickEdit={quickEditWeeks}
             workoutLabels={workoutLabels}
+            eventLookup={eventLookup}
             weekPresetDrag={weekPresetDrag}
             weekPresetTargetId={weekPresetTargetId}
             isWeekPresetDragActive={isWeekPresetDragActive}

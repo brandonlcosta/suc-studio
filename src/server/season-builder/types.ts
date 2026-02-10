@@ -17,6 +17,7 @@ export const DAY_KEYS: DayKey[] = ["mon", "tue", "wed", "thu", "fri", "sat", "su
 
 export type DayAssignment = {
   workoutId?: string;
+  workoutIds?: string[];
   notes?: string;
 };
 
@@ -29,6 +30,8 @@ export interface WeekInstance {
   volume: IntensityLabel;
   intensity: IntensityLabel;
   days?: WeekDays;
+  eventIds?: string[];
+  eventRoles?: Record<string, "goal" | "tuneup" | "simulation" | "social">;
 }
 
 export interface BlockInstance {

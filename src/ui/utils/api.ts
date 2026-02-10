@@ -6,6 +6,7 @@ import type {
   EventsSelection,
   RouteLabel,
   WorkoutsMaster,
+  RouteIntelDoc,
 } from "../types";
 import { buildStudioApiUrl } from "./studioApi";
 
@@ -169,7 +170,15 @@ export async function getRoutePois(groupId: string): Promise<{
   pois: Array<{
     id: string;
     type: string;
-    title: string;
+    title?: string;
+    label?: string;
+    routePointIndex?: number;
+    metadata?: {
+      water?: boolean;
+      nutrition?: boolean;
+      crewAccess?: boolean;
+      dropBags?: boolean;
+    };
     variants?: Record<
       string,
       {
@@ -189,6 +198,61 @@ export async function getRoutePois(groupId: string): Promise<{
   }
 
   return parseJsonResponse(response, "Get route POIs");
+}
+
+/**
+ * Save or update an aid-station POI.
+ */
+export async function saveAidStationPoi(
+  groupId: string,
+  data: {
+    id: string;
+    title: string;
+    routePointIndex: number;
+    metadata?: {
+      water?: boolean;
+      nutrition?: boolean;
+      crewAccess?: boolean;
+      dropBags?: boolean;
+    };
+  }
+): Promise<{ success: boolean; poi: unknown; pois: unknown[] }> {
+  const response = await fetch(buildStudioApiUrl(`/routes/${groupId}/pois/aid-station`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ poi: data }),
+  });
+
+  if (!response.ok) {
+    await handleError(response, "Failed to save aid station POI");
+  }
+
+  return parseJsonResponse(response, "Save aid station POI");
+}
+
+/**
+ * Save or update a workout POI.
+ */
+export async function saveWorkoutPoi(
+  groupId: string,
+  data: {
+    id: string;
+    label: string;
+    routePointIndex: number;
+    notes?: string;
+  }
+): Promise<{ success: boolean; poi: unknown; pois: unknown[] }> {
+  const response = await fetch(buildStudioApiUrl(`/routes/${groupId}/pois/workout`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ poi: data }),
+  });
+
+  if (!response.ok) {
+    await handleError(response, "Failed to save workout POI");
+  }
+
+  return parseJsonResponse(response, "Save workout POI");
 }
 
 /**
@@ -331,5 +395,63 @@ export async function saveWorkoutsMaster(data: WorkoutsMaster): Promise<void> {
 
   if (!response.ok) {
     await handleError(response, "Failed to save workouts");
+  }
+}
+
+/**
+ * List route intel documents.
+ */
+export async function listRouteIntel(): Promise<RouteIntelDoc[]> {
+  const response = await fetch(buildStudioApiUrl("/route-intel"));
+
+  if (!response.ok) {
+    await handleError(response, "Failed to load route intel");
+  }
+
+  const data = await parseJsonResponse<{ items: RouteIntelDoc[] }>(
+    response,
+    "Load route intel"
+  );
+  return data.items || [];
+}
+
+/**
+ * Load a single route intel document.
+ */
+export async function getRouteIntel(id: string): Promise<RouteIntelDoc> {
+  const response = await fetch(buildStudioApiUrl(`/route-intel/${id}`));
+
+  if (!response.ok) {
+    await handleError(response, "Failed to load route intel");
+  }
+
+  return parseJsonResponse(response, "Load route intel");
+}
+
+/**
+ * Save (publish) a route intel document.
+ */
+export async function saveRouteIntel(doc: RouteIntelDoc): Promise<void> {
+  const response = await fetch(buildStudioApiUrl("/route-intel"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(doc, null, 2),
+  });
+
+  if (!response.ok) {
+    await handleError(response, "Failed to save route intel");
+  }
+}
+
+/**
+ * Delete a route intel document.
+ */
+export async function deleteRouteIntel(id: string): Promise<void> {
+  const response = await fetch(buildStudioApiUrl(`/route-intel/${id}`), {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    await handleError(response, "Failed to delete route intel");
   }
 }

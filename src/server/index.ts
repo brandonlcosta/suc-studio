@@ -11,6 +11,13 @@ import blocksRouter from "./api/blocks.js";
 import weeksRouter from "./api/weeks.js";
 import challengesRouter from "./api/challenges.js";
 import seasonBuilderRouter from "./api/seasonBuilder.js";
+import trainingContentRouter from "./api/trainingContent.js";
+import routeIntelRouter from "./api/routeIntel.js";
+import routeIntelPreviewRouter from "./api/routeIntelPreview.js";
+import footwearReviewsRouter from "./api/footwearReviews.js";
+import gearReviewsRouter from "./api/gearReviews.js";
+import raceRecapsRouter from "./api/raceRecaps.js";
+import crewRunRecapsRouter from "./api/crewRunRecaps.js";
 import { SHARED_DATA_ROOT } from "./utils/paths.js";
 
 const app = express();
@@ -48,6 +55,13 @@ app.use("/api/blocks", blocksRouter);
 app.use("/api/weeks", weeksRouter);
 app.use("/api/challenges", challengesRouter);
 app.use("/api/season", seasonBuilderRouter);
+app.use("/api/training-content", trainingContentRouter);
+app.use("/api/route-intel", routeIntelRouter);
+app.use("/api/internal/route-intel", routeIntelPreviewRouter);
+app.use("/api/footwear-reviews", footwearReviewsRouter);
+app.use("/api/gear-reviews", gearReviewsRouter);
+app.use("/api/race-recaps", raceRecapsRouter);
+app.use("/api/crew-run-recaps", crewRunRecapsRouter);
 
 // Health check
 app.get("/api/health", (_req, res) => {
@@ -67,6 +81,12 @@ app.get("/api/health", (_req, res) => {
       "/api/weeks",
       "/api/challenges",
       "/api/season",
+      "/api/training-content",
+      "/api/route-intel",
+      "/api/footwear-reviews",
+      "/api/gear-reviews",
+      "/api/race-recaps",
+      "/api/crew-run-recaps",
     ],
   });
 });

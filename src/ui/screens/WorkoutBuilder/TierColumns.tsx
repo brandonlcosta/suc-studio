@@ -2,7 +2,7 @@ import { closestCenter, DndContext, DragOverlay, type DragEndEvent, type DragSta
 import { arrayMove, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useMemo, useState } from "react";
 import type { EffortBlockDefinition } from "./effortBlocks";
-import type { EffortBlockDragPayload, TierLabel, WorkoutBlockInstance } from "./builderTypes";
+import type { EffortBlockDragPayload, LadderConfig, TierLabel, WorkoutBlockInstance } from "./builderTypes";
 import TierColumn from "./TierColumn";
 import WorkoutBlockInstanceCard from "./WorkoutBlockInstanceCard";
 
@@ -12,8 +12,10 @@ interface TierColumnsProps {
   effortLookup: Record<string, EffortBlockDefinition>;
   availableEffortBlocks: EffortBlockDefinition[];
   onDropEffortBlock: (tier: TierLabel, payload: EffortBlockDragPayload) => void;
+  onAddLadder: (tier: TierLabel, config: LadderConfig) => void;
   onDeleteBlock: (tier: TierLabel, id: string) => void;
   onUpdateBlock: (tier: TierLabel, id: string, updates: Partial<WorkoutBlockInstance>) => void;
+  onInsertAfterBlock: (tier: TierLabel, blockIndex: number, effortBlockId: string) => void;
   onReorderBlocks: (tier: TierLabel, nextBlocks: WorkoutBlockInstance[]) => void;
   onMoveBlocks: (
     sourceTier: TierLabel,
@@ -34,8 +36,10 @@ export default function TierColumns({
   effortLookup,
   availableEffortBlocks,
   onDropEffortBlock,
+  onAddLadder,
   onDeleteBlock,
   onUpdateBlock,
+  onInsertAfterBlock,
   onReorderBlocks,
   onMoveBlocks,
   onCopyBlock,
@@ -153,8 +157,10 @@ export default function TierColumns({
                 effortLookup={effortLookup}
                 availableEffortBlocks={availableEffortBlocks}
                 onDropEffortBlock={onDropEffortBlock}
+                onAddLadder={onAddLadder}
                 onDeleteBlock={onDeleteBlock}
                 onUpdateBlock={onUpdateBlock}
+                onInsertAfterBlock={onInsertAfterBlock}
                 onReorderBlocks={onReorderBlocks}
                 onCopyBlock={onCopyBlock}
                 onCopyTier={onCopyTier}

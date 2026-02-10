@@ -15,7 +15,15 @@ import {
 type RoutePoiRecord = {
   id: string;
   type: string;
-  title: string;
+  title?: string;
+  label?: string;
+  routePointIndex?: number;
+  metadata?: {
+    water?: boolean;
+    nutrition?: boolean;
+    crewAccess?: boolean;
+    dropBags?: boolean;
+  };
   system?: boolean;
   locked?: boolean;
   variants?: Record<
@@ -689,12 +697,89 @@ export default function SimpleRouteMap({
 
     for (const poi of pois) {
       const hasWarning = Boolean(poiWarnings?.[poi.id]?.length);
-      const poiTitle = poi.title || poi.id;
+      const poiTitle = poi.label || poi.title || poi.id;
       const activeEta = normalizedActive
         ? poiEtas?.[poi.id]?.[normalizedActive as RouteLabel]
         : undefined;
       const activeEtaLabel = activeEta?.etaLabel ?? "n/a";
       const etaVariantLabel = normalizedActive || "n/a";
+      const isIndexedPoi =
+        (poi.type === "aid-station" || poi.type === "workout") &&
+        Number.isFinite(poi.routePointIndex);
+
+      if (isIndexedPoi) {
+        if (!normalizedActive) continue;
+        const stats = routeStatsRef.current.get(normalizedActive) ?? null;
+        const coord = stats?.coords?.[poi.routePointIndex as number];
+        if (!coord) continue;
+
+        const markerKey = `${poi.id}::${normalizedActive}`;
+        const isActiveVariant = true;
+        const isDraggable = allowPoiDrag && isActiveVariant;
+        nextVisibleKeys.add(markerKey);
+
+        let entry = markersRef.current.get(markerKey);
+        const indexLabel = Number.isFinite(poi.routePointIndex)
+          ? `Index: ${poi.routePointIndex}`
+          : "Index: n/a";
+        if (!entry) {
+          const element = document.createElement("div");
+          element.setAttribute("data-poi-id", poi.id);
+          element.setAttribute("data-poi-variant", normalizedActive);
+          element.title = `${poiTitle}\n${indexLabel}`;
+          element.addEventListener("mousedown", (event) => {
+            event.stopPropagation();
+          });
+          element.addEventListener("click", (event) => {
+            event.stopPropagation();
+            onPoiSelectRef.current?.(poi.id);
+          });
+          element.addEventListener("mouseenter", () => {
+            setHoveredPoiId(poi.id);
+          });
+          element.addEventListener("mouseleave", () => {
+            setHoveredPoiId((prev) => (prev === poi.id ? null : prev));
+          });
+
+          const marker = new maplibregl.Marker({ element, draggable: isDraggable })
+            .setLngLat([coord[0], coord[1]])
+            .addTo(map);
+
+          marker.on("dragstart", () => {
+            draggingMarkerKeyRef.current = markerKey;
+            onPoiSelectRef.current?.(poi.id);
+            element.style.cursor = "grabbing";
+          });
+          marker.on("dragend", () => {
+            const lngLat = marker.getLngLat();
+            draggingMarkerKeyRef.current = null;
+            element.style.cursor = isDraggable ? "grab" : "pointer";
+            onPoiDragEndRef.current?.(poi.id, { lat: lngLat.lat, lon: lngLat.lng });
+          });
+
+          entry = { marker, element, poiId: poi.id, variant: normalizedActive };
+          markersRef.current.set(markerKey, entry);
+        } else {
+          entry.element.title = `${poiTitle}\n${indexLabel}`;
+          if (draggingMarkerKeyRef.current !== markerKey) {
+            entry.marker.setLngLat([coord[0], coord[1]]);
+          }
+          if (typeof entry.marker.setDraggable === "function") {
+            entry.marker.setDraggable(isDraggable);
+          }
+        }
+
+        const isHovered = poi.id === hoveredPoiId || poi.id === highlightedPoiId;
+        applyMarkerStyle(entry.element, {
+          activeVariant: isActiveVariant,
+          selected: poi.id === activePoiId,
+          hovered: isHovered,
+          draggable: isDraggable,
+          warning: hasWarning,
+        });
+
+        continue;
+      }
       const placements = Object.entries(poi.variants ?? {}).filter(([label]) =>
         normalizedVariants.includes(String(label).toUpperCase())
       );
@@ -834,6 +919,19 @@ export default function SimpleRouteMap({
     if (!targetPoiId || !activeVariantLabel) return null;
     const poi = pois.find((entry) => entry.id === targetPoiId);
     if (!poi) return null;
+    if (
+      (poi.type === "aid-station" || poi.type === "workout") &&
+      Number.isFinite(poi.routePointIndex)
+    ) {
+      return {
+        title: poi.label || poi.title || poi.id,
+        variant: activeVariantLabel,
+        distances: `Index ${poi.routePointIndex}`,
+        count: 1,
+        isAidStation: poi.type === "aid-station",
+        isWorkout: poi.type === "workout",
+      };
+    }
     const placements = asPlacements(
       poi.variants?.[activeVariantLabel] as RoutePoiVariantValue | undefined
     );
@@ -844,10 +942,12 @@ export default function SimpleRouteMap({
       )
       .join(", ");
     return {
-      title: poi.title || poi.id,
+      title: poi.label || poi.title || poi.id,
       variant: activeVariantLabel,
       distances,
       count: placements.length,
+      isAidStation: false,
+      isWorkout: false,
     };
   })();
 
@@ -886,10 +986,18 @@ export default function SimpleRouteMap({
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
             <span>{poiOverlay.variant}</span>
-            <span>{poiOverlay.count} passes</span>
+            <span>
+              {poiOverlay.isAidStation
+                ? "Aid Station"
+                : poiOverlay.isWorkout
+                  ? "Workout POI"
+                  : `${poiOverlay.count} passes`}
+            </span>
           </div>
           <div style={{ marginTop: "0.2rem", color: "#cbd5f5" }}>
-            {poiOverlay.distances} mi
+            {poiOverlay.isAidStation || poiOverlay.isWorkout
+              ? poiOverlay.distances
+              : `${poiOverlay.distances} mi`}
           </div>
         </div>
       )}

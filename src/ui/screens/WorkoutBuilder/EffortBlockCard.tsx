@@ -9,6 +9,7 @@ interface EffortBlockCardProps {
 export default function EffortBlockCard({ block }: EffortBlockCardProps) {
   const handleDragStart = (event: DragEvent<HTMLDivElement>) => {
     const payload: EffortBlockDragPayload = {
+      domain: "run",
       effortBlockId: block.id,
       label: block.label,
       target: block.target,

@@ -146,6 +146,7 @@ function normalizeEventFromCanonical(raw: any) {
       eventDescription: "",
       eventDate: "",
       eventTime: "",
+      type: "training-run",
       startLocationName: "",
       startLocationUrl: "",
       startLocationCoordinates: { lat: 0, lng: 0 },
@@ -160,6 +161,7 @@ function normalizeEventFromCanonical(raw: any) {
       raw.eventDescription ?? raw.event_description ?? raw.description ?? "",
     eventDate: raw.eventDate ?? raw.event_date ?? "",
     eventTime: raw.eventTime ?? raw.event_time ?? "",
+    type: raw.type ?? raw.eventType ?? raw.event_type ?? "training-run",
     startLocationName:
       raw.startLocationName ?? raw.start_location_name ?? "",
     startLocationUrl: raw.startLocationUrl ?? raw.start_location_url ?? "",
@@ -185,6 +187,7 @@ function normalizeEventToCanonical(raw: any) {
       raw.event_description ?? raw.eventDescription ?? raw.description ?? "",
     event_date: raw.event_date ?? raw.eventDate ?? "",
     event_time: raw.event_time ?? raw.eventTime ?? "",
+    type: raw.type ?? raw.eventType ?? raw.event_type ?? "training-run",
     start_location_name:
       raw.start_location_name ?? raw.startLocationName ?? "",
     start_location_url:

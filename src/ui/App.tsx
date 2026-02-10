@@ -6,8 +6,18 @@ import WorkoutBuilder from "./screens/WorkoutBuilder";
 import SeasonBuilder from "./screens/SeasonBuilder";
 import RosterBuilder from "./screens/RosterBuilder";
 import ChallengeBuilder from "./screens/ChallengeBuilder";
+import TipsManager from "./screens/TipsManager";
+import RouteIntelBuilder from "./screens/RouteIntelBuilder/RouteIntelBuilder";
 
-type Screen = "routes" | "events" | "workouts" | "season" | "roster" | "challenges";
+type Screen =
+  | "routes"
+  | "events"
+  | "workouts"
+  | "season"
+  | "roster"
+  | "challenges"
+  | "tips"
+  | "route-intel";
 
 export default function App() {
   const [activeScreen, setActiveScreen] = useState<Screen>("season");
@@ -22,6 +32,8 @@ export default function App() {
       {activeScreen === "season" && <SeasonBuilder />}
       {activeScreen === "roster" && <RosterBuilder />}
       {activeScreen === "challenges" && <ChallengeBuilder />}
+      {activeScreen === "tips" && <TipsManager />}
+      {activeScreen === "route-intel" && <RouteIntelBuilder />}
     </div>
   );
 }

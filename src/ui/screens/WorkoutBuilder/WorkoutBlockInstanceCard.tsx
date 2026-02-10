@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { EffortBlockDefinition } from "./effortBlocks";
-import type { TierLabel, WorkoutBlockInstance } from "./builderTypes";
+import type { LadderDirection, TierLabel, WorkoutBlockInstance } from "./builderTypes";
 import DurationInput from "./DurationInput";
 
 interface WorkoutBlockInstanceCardProps {
@@ -11,6 +11,13 @@ interface WorkoutBlockInstanceCardProps {
   allNextTiers?: TierLabel[];
   onDelete: (id: string) => void;
   onUpdate: (id: string, updates: Partial<WorkoutBlockInstance>) => void;
+  onInsertAfter?: (blockIndex: number, effortBlockId: string) => void;
+  insertAfterIndex?: number;
+  showLadderControls?: boolean;
+  ladderDirection?: LadderDirection;
+  onChangeLadderDirection?: (direction: LadderDirection) => void;
+  onToggleExpand?: () => void;
+  isExpanded?: boolean;
   onCopyBlock?: (blockIndex: number, targetTiers: TierLabel[]) => void;
   isLocked: boolean;
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
@@ -33,13 +40,21 @@ export default function WorkoutBlockInstanceCard({
   allNextTiers,
   onDelete,
   onUpdate,
+  onInsertAfter,
+  insertAfterIndex,
+  showLadderControls = false,
+  ladderDirection = "up",
+  onChangeLadderDirection,
+  onToggleExpand,
+  isExpanded = true,
   onCopyBlock,
   isLocked,
   dragHandleProps,
   isDragging,
 }: WorkoutBlockInstanceCardProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isNotesExpanded, setIsNotesExpanded] = useState(false);
   const metaLine = parseEffortMeta(effort.target);
+  const allowHours = effort.id === "aerobic" || effort.id === "tempo";
 
   const handleCopyToNext = () => {
     if (blockIndex !== undefined && nextTier && onCopyBlock) {
@@ -72,6 +87,12 @@ export default function WorkoutBlockInstanceCard({
 
   const handleNotesChange = (value: string) => {
     onUpdate(instance.id, { notes: value === "" ? null : value });
+  };
+
+  const handleAddInterval = () => {
+    if (blockIndex === undefined || !onInsertAfter) return;
+    const targetIndex = insertAfterIndex ?? blockIndex;
+    onInsertAfter(targetIndex, effort.id);
   };
 
   return (
@@ -121,7 +142,12 @@ export default function WorkoutBlockInstanceCard({
                 )}
               </>
             )}
-            <button type="button" onClick={() => setIsExpanded((prev) => !prev)} style={actionButtonStyle}>
+            {showLadderControls && onToggleExpand && (
+              <button type="button" onClick={onToggleExpand} style={actionButtonStyle}>
+                {isExpanded ? "Collapse" : "Expand"}
+              </button>
+            )}
+            <button type="button" onClick={() => setIsNotesExpanded((prev) => !prev)} style={actionButtonStyle}>
               Notes
             </button>
             <button
@@ -160,8 +186,39 @@ export default function WorkoutBlockInstanceCard({
               onChange={handleDurationChange}
               disabled={isLocked}
               allowNull
+              allowHours={allowHours}
             />
+            {effort.id === "ladder" && showLadderControls && !isLocked && onInsertAfter && blockIndex !== undefined && (
+              <button type="button" onClick={handleAddInterval} style={miniActionStyle}>
+                Add Interval
+              </button>
+            )}
           </div>
+
+          {effort.id === "ladder" && showLadderControls && (
+            <div style={fieldBlockStyle}>
+              <label style={labelStyle}>Direction</label>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                {[
+                  { value: "up", label: "Up" },
+                  { value: "down", label: "Down" },
+                  { value: "updown", label: "Up + Down" },
+                ].map((option) => (
+                  <label key={`ladder-direction-${option.value}`} style={directionOptionStyle}>
+                    <input
+                      type="radio"
+                      name={`ladder-direction-${instance.id}`}
+                      value={option.value}
+                      checked={ladderDirection === option.value}
+                      onChange={() => onChangeLadderDirection?.(option.value as LadderDirection)}
+                      disabled={isLocked}
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div style={fieldBlockStyle}>
             <label style={labelStyle}>Rest</label>
@@ -175,7 +232,7 @@ export default function WorkoutBlockInstanceCard({
         </div>
       </div>
 
-      {isExpanded && (
+      {isNotesExpanded && (
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
           <label style={labelStyle}>Notes</label>
           <textarea
@@ -260,6 +317,26 @@ const copyButtonStyle: React.CSSProperties = {
   color: "#7cdb53",
   fontSize: "9px",
   cursor: "pointer",
+};
+
+const miniActionStyle: React.CSSProperties = {
+  marginTop: "6px",
+  padding: "4px 6px",
+  borderRadius: "6px",
+  border: "1px solid #3a3a3a",
+  backgroundColor: "transparent",
+  color: "#c9c9c9",
+  fontSize: "10px",
+  cursor: "pointer",
+  alignSelf: "flex-start",
+};
+
+const directionOptionStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "8px",
+  fontSize: "11px",
+  color: "#e5e7eb",
 };
 
 const repsInputStyle: React.CSSProperties = {

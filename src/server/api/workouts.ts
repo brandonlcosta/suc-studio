@@ -132,6 +132,18 @@ const deleteDraft = (workoutId: string): void => {
   saveWorkoutsMaster(master);
 };
 
+const deleteArchived = (workoutId: string, version?: number): void => {
+  const master = loadMasterSafe();
+  const nextWorkouts = master.workouts.filter((workout) => {
+    if (workout.workoutId !== workoutId) return true;
+    if (workout.status !== "archived") return true;
+    if (version === undefined) return false;
+    return workout.version !== version;
+  });
+  master.workouts = nextWorkouts;
+  saveWorkoutsMaster(master);
+};
+
 /**
  * GET /api/workouts
  * Read workouts.master.json
@@ -245,6 +257,30 @@ router.delete("/draft/:workoutId", (req, res) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Delete draft error:", error);
+    return res.status(500).json({ error: message });
+  }
+});
+
+/**
+ * DELETE /api/workouts/archive/:workoutId/:version?
+ * Delete archived workouts (optionally specific version).
+ */
+router.delete("/archive/:workoutId/:version?", (req, res) => {
+  try {
+    const workoutId = req.params.workoutId;
+    if (!workoutId) {
+      return res.status(400).json({ error: "workoutId is required." });
+    }
+    const versionParam = req.params.version;
+    const version = versionParam ? Number(versionParam) : undefined;
+    if (versionParam && Number.isNaN(version)) {
+      return res.status(400).json({ error: "version must be a number." });
+    }
+    deleteArchived(workoutId, version);
+    return res.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Delete archived error:", error);
     return res.status(500).json({ error: message });
   }
 });

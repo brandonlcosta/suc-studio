@@ -115,7 +115,7 @@ button:disabled {
   grid-template-columns: 260px 1fr 320px;
   gap: 16px;
   padding: 18px;
-  height: calc(100vh - 86px);
+  height: calc(100vh - px);
 }
 
 .panel {

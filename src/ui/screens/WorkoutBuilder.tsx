@@ -1,21 +1,43 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type DragEvent } from "react";
 import ActionBar from "./WorkoutBuilder/ActionBar";
 import BlockLibrarySidebar from "./WorkoutBuilder/BlockLibrarySidebar";
+import StrengthBlockLibrarySidebar from "./WorkoutBuilder/StrengthBlockLibrarySidebar";
 import SummarySidebar from "./WorkoutBuilder/SummarySidebar";
+import StrengthSummarySidebar from "./WorkoutBuilder/StrengthSummarySidebar";
 import WorkoutMetadata from "./WorkoutBuilder/WorkoutMetadata";
 import WorkoutChart from "./WorkoutBuilder/WorkoutChart";
+import StrengthWorkoutPreview from "./WorkoutBuilder/StrengthWorkoutPreview";
 import TierColumns from "./WorkoutBuilder/TierColumns";
+import StrengthColumns, { type StrengthLibraryPayload } from "./WorkoutBuilder/StrengthColumns";
 import { effortBlocks } from "./WorkoutBuilder/effortBlocks";
 import type { EffortBlockDefinition } from "./WorkoutBuilder/effortBlocks";
+import { strengthWorkoutTypeOptions } from "./WorkoutBuilder/strengthBlocks";
 import type {
   EffortBlockDragPayload,
+  LadderConfig,
   TierLabel,
   WorkoutBlockInstance,
   WorkoutBuilderWorkout,
 } from "./WorkoutBuilder/builderTypes";
 import { generateWorkoutNameByTier } from "./WorkoutBuilder/workoutName";
-import type { IntervalSegment, IntervalTarget, TierVariant, Workout, WorkoutsMaster } from "../types";
+import type {
+  IntervalSegment,
+  IntervalTarget,
+  StrengthBlock,
+  StrengthWorkoutType,
+  TierVariant,
+  Workout,
+  WorkoutDomain,
+  RouteGroupSummary,
+  WorkoutSectionEffort,
+  WorkoutsMaster,
+} from "../types";
 import { buildStudioApiUrl } from "../utils/studioApi";
+import { listRouteGroups } from "../utils/api";
+import useRouteContext from "../hooks/useRouteContext";
+import RouteMapPreview from "../components/route-context/RouteMapPreview";
+import RouteElevationPreview from "../components/route-context/RouteElevationPreview";
+import { buildSectionRangeFromPois } from "../components/route-context/routeContextUtils";
 
 type ViewMode = "builder" | "preview" | "library";
 
@@ -40,21 +62,95 @@ const createWorkoutId = () => {
   return `workout-${Date.now()}-${Math.random()}`;
 };
 
-const createDraftWorkout = (): Workout => {
+const createDraftWorkout = (domain: WorkoutDomain = "run", strengthType?: StrengthWorkoutType): Workout => {
   const now = new Date().toISOString();
+  const resolvedDomain = domain ?? "run";
   return {
     workoutId: createWorkoutId(),
     version: 0,
     status: "draft",
+    domain: resolvedDomain,
+    strengthType: resolvedDomain === "strength" ? strengthType ?? "strength_general" : null,
     name: "Untitled Workout",
     description: "",
     focus: [],
     coachNotes: "",
     tiers: {},
+    strengthStructure: resolvedDomain === "strength" ? [] : undefined,
+    routeId: null,
+    routeMode: null,
+    sectionEfforts: [],
     createdAt: now,
     updatedAt: now,
     publishedAt: null,
   };
+};
+
+const normalizeWorkoutDomain = (workout: Workout): Workout => {
+  const domain: WorkoutDomain = workout.domain ?? "run";
+  return {
+    ...workout,
+    domain,
+    strengthType:
+      domain === "strength" ? workout.strengthType ?? "strength_general" : workout.strengthType ?? null,
+    strengthStructure: domain === "strength" ? workout.strengthStructure ?? [] : workout.strengthStructure,
+    tiers: workout.tiers ?? {},
+    routeId: workout.routeId ?? null,
+    routeMode: workout.routeMode ?? null,
+    sectionEfforts: Array.isArray(workout.sectionEfforts) ? workout.sectionEfforts : [],
+  };
+};
+
+const normalizeStrengthStructure = (workout: Workout): StrengthBlock[] => {
+  return Array.isArray(workout.strengthStructure) ? workout.strengthStructure : [];
+};
+
+const resolveStrengthTypeLabel = (type: StrengthWorkoutType | null | undefined): string => {
+  const match = strengthWorkoutTypeOptions.find((option) => option.id === type);
+  return match ? match.label : "General Strength";
+};
+
+const createStrengthBlockFromPayload = (payload: StrengthLibraryPayload): StrengthBlock | null => {
+  const id = `strength-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  if (payload.type === "strength_exercise") {
+    return {
+      type: "strength_exercise",
+      id,
+      name: payload.name,
+      sets: 3,
+      reps: "8-10",
+      load: "",
+      notes: "",
+    };
+  }
+  if (payload.type === "circuit_block") {
+    return {
+      type: "circuit_block",
+      id,
+      rounds: payload.rounds ?? 3,
+      exercises: [],
+    };
+  }
+  if (payload.type === "mobility_block") {
+    return {
+      type: "mobility_block",
+      id,
+      name: payload.name ?? "Mobility Flow",
+      duration: payload.duration ?? "8min",
+      cues: "",
+    };
+  }
+  if (payload.type === "crosstrain_block") {
+    return {
+      type: "crosstrain_block",
+      id,
+      modality: payload.modality ?? "bike",
+      duration: payload.duration ?? "30min",
+      target: "",
+      notes: "",
+    };
+  }
+  return null;
 };
 
 const parseZoneNumber = (value?: string | null): number | null => {
@@ -73,7 +169,66 @@ const effortIdFromZone = (zone: number | null): string => {
   return "interval";
 };
 
+const buildWorkoutSectionKey = (index: number, totalMarkers: number): string => {
+  if (totalMarkers <= 0) return "start_to_finish";
+  if (index === 0) return "start_to_wk_1";
+  if (index === totalMarkers) return `wk_${totalMarkers}_to_finish`;
+  return `wk_${index}_to_wk_${index + 1}`;
+};
+
+const buildWorkoutSectionKeys = (markerCount: number): string[] => {
+  if (markerCount <= 0) return [];
+  return Array.from({ length: markerCount + 1 }, (_, index) =>
+    buildWorkoutSectionKey(index, markerCount)
+  );
+};
+
+const buildSectionEffortList = (
+  sectionKeys: string[],
+  effortMap: Map<string, string>
+): WorkoutSectionEffort[] => {
+  return sectionKeys
+    .map((key) => {
+      const effort = effortMap.get(key);
+      return effort ? { sectionKey: key, effort } : null;
+    })
+    .filter((entry): entry is WorkoutSectionEffort => Boolean(entry));
+};
+
+const parseEffortDropPayload = (
+  event: DragEvent<HTMLElement>
+): EffortBlockDragPayload | null => {
+  const raw =
+    event.dataTransfer.getData("application/x-suc-effort-block") ||
+    event.dataTransfer.getData("application/json");
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as EffortBlockDragPayload;
+    if (parsed && parsed.effortBlockId) return parsed;
+  } catch {
+    return null;
+  }
+  return null;
+};
+
+const isStrideTarget = (target?: IntervalTarget | null): boolean => {
+  if (!target) return false;
+  const extended = target as IntervalTarget & { paceTag?: string };
+  if (typeof extended.paceTag === "string" && extended.paceTag.toLowerCase() === "strides") {
+    return true;
+  }
+  return typeof target.zone === "string" && /stride/i.test(target.zone);
+};
+
+const isLadderTarget = (target?: IntervalTarget | null): boolean => {
+  if (!target) return false;
+  const extended = target as IntervalTarget & { paceTag?: string };
+  return typeof extended.paceTag === "string" && extended.paceTag.toLowerCase() === "ladder";
+};
+
 const resolveEffortBlockId = (target?: IntervalTarget | null): string => {
+  if (isLadderTarget(target)) return "ladder";
+  if (isStrideTarget(target)) return "strides";
   const zoneNumber = target?.zone ? parseZoneNumber(target.zone) : null;
   return effortIdFromZone(zoneNumber ?? 1);
 };
@@ -81,10 +236,17 @@ const resolveEffortBlockId = (target?: IntervalTarget | null): string => {
 const targetFromEffortBlockId = (effortBlockId: string): IntervalTarget => {
   const effort = effortBlocks.find((block) => block.id === effortBlockId);
   const zoneNumber = effort ? parseZoneNumber(effort.target) : 1;
-  return {
+  const target: IntervalTarget & { paceTag?: string } = {
     type: "pace",
     zone: `Z${zoneNumber ?? 1}`,
   };
+  if (effortBlockId === "ladder") {
+    target.paceTag = "ladder";
+  }
+  if (effortBlockId === "strides") {
+    target.paceTag = "strides";
+  }
+  return target;
 };
 
 const defaultRestTarget = (): IntervalTarget => ({
@@ -126,6 +288,48 @@ const buildBlockFromSegment = (segment: IntervalSegment, tier: TierLabel, index:
     reps: segment.reps ?? null,
     notes: segment.work?.cues?.[0] ?? null,
   };
+};
+
+const buildLadderSegments = (config: LadderConfig): IntervalSegment[] => {
+  const steps = config.steps.map((step) => step.trim()).filter(Boolean);
+  if (steps.length === 0) return [];
+
+  let orderedSteps = steps;
+  if (config.direction === "down") {
+    orderedSteps = [...steps].reverse();
+  } else if (config.direction === "updown") {
+    const downSteps = steps.slice(0, -1).reverse();
+    orderedSteps = [...steps, ...downSteps];
+  }
+
+  const sets = Math.max(1, config.sets || 1);
+  const segments: IntervalSegment[] = [];
+
+  for (let setIndex = 0; setIndex < sets; setIndex += 1) {
+    orderedSteps.forEach((duration, stepIndex) => {
+      const isLastStep = stepIndex === orderedSteps.length - 1;
+      const isLastSet = setIndex === sets - 1;
+      const restDuration = isLastStep ? (isLastSet ? null : config.setRest) : config.stepRest;
+      segments.push({
+        type: "interval",
+        reps: 1,
+        work: {
+          duration,
+          target: targetFromEffortBlockId(config.effortBlockId),
+          cues: [],
+        },
+        rest: restDuration
+          ? {
+              duration: restDuration,
+              target: defaultRestTarget(),
+              cues: [],
+            }
+          : null,
+      });
+    });
+  }
+
+  return segments;
 };
 
 const workoutToView = (workout: Workout): WorkoutBuilderWorkout => {
@@ -211,6 +415,11 @@ export default function WorkoutBuilder() {
   const [previewWorkout, setPreviewWorkout] = useState<Workout | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [showPublishOverlay, setShowPublishOverlay] = useState(false);
+  const [selectedDomain, setSelectedDomain] = useState<WorkoutDomain>("run");
+  const [routeGroups, setRouteGroups] = useState<RouteGroupSummary[]>([]);
+  const [selectedSectionIndex, setSelectedSectionIndex] = useState<number | null>(null);
+  const [hoveredSectionIndex, setHoveredSectionIndex] = useState<number | null>(null);
+  const [workoutTab, setWorkoutTab] = useState<"standard" | "route">("standard");
 
   const refreshWorkouts = async () => {
     const response = await fetch(buildStudioApiUrl("/workouts"));
@@ -218,31 +427,37 @@ export default function WorkoutBuilder() {
       throw new Error("Failed to load workouts");
     }
     const data = (await response.json()) as WorkoutsMaster;
-    setWorkouts(Array.isArray(data.workouts) ? data.workouts : []);
-    return data.workouts ?? [];
+    const list = Array.isArray(data.workouts) ? data.workouts.map(normalizeWorkoutDomain) : [];
+    setWorkouts(list);
+    return list;
   };
+
+  useEffect(() => {
+    let isMounted = true;
+    listRouteGroups()
+      .then((groups) => {
+        if (isMounted) setRouteGroups(groups);
+      })
+      .catch((error) => {
+        console.warn("Failed to load route groups.", error);
+        if (isMounted) setRouteGroups([]);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const list = await refreshWorkouts();
-        const drafts = list.filter((workout) => workout.status === "draft");
-        const published = list.filter((workout) => workout.status === "published");
-        if (drafts.length > 0) {
-          const latestDraft = drafts.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))[0];
-          setCurrentWorkout(latestDraft);
-          setMode("builder");
-        } else if (published.length > 0) {
-          const latestPublished = published.sort((a, b) => (b.version ?? 0) - (a.version ?? 0))[0];
-          setPreviewWorkout(latestPublished);
-          setMode("preview");
-        } else {
-          setCurrentWorkout(createDraftWorkout());
-          setMode("builder");
-        }
+        await refreshWorkouts();
+        setCurrentWorkout(createDraftWorkout(selectedDomain));
+        setPreviewWorkout(null);
+        setMode("builder");
         setIsDirty(false);
       } catch {
-        setCurrentWorkout(createDraftWorkout());
+        setCurrentWorkout(createDraftWorkout(selectedDomain));
+        setPreviewWorkout(null);
         setMode("builder");
       }
     };
@@ -254,8 +469,113 @@ export default function WorkoutBuilder() {
     return Object.fromEntries(effortBlocks.map((block) => [block.id, block]));
   }, []);
 
+  useEffect(() => {
+    if (mode === "library") return;
+    const active = mode === "preview" && previewWorkout ? previewWorkout : currentWorkout;
+    const nextDomain = active.domain ?? "run";
+    setSelectedDomain((prev) => (prev === nextDomain ? prev : nextDomain));
+  }, [mode, currentWorkout, previewWorkout]);
+
   const isPreview = mode === "preview";
+  const activeWorkout = isPreview && previewWorkout ? previewWorkout : currentWorkout;
+  const activeDomain: WorkoutDomain = mode === "library" ? selectedDomain : activeWorkout.domain ?? "run";
   const isLocked = isPreview;
+
+  const routeContext = useRouteContext(activeWorkout?.routeId ?? null, null);
+
+  const workoutRoutePois = useMemo(() => {
+    return routeContext.pois
+      .filter((poi) => poi.type === "workout" && Number.isFinite(poi.routePointIndex))
+      .sort((a, b) => (a.routePointIndex ?? 0) - (b.routePointIndex ?? 0));
+  }, [routeContext.pois]);
+
+  const workoutSectionKeys = useMemo(
+    () => buildWorkoutSectionKeys(workoutRoutePois.length),
+    [workoutRoutePois.length]
+  );
+  const sectionTemplate =
+    workoutSectionKeys.length > 0
+      ? `repeat(${workoutSectionKeys.length}, minmax(0, 1fr))`
+      : "1fr";
+
+  const workoutRouteAvailable =
+    activeDomain === "run" && Boolean(activeWorkout.routeId) && workoutSectionKeys.length > 0;
+
+  useEffect(() => {
+    setSelectedSectionIndex(null);
+    setHoveredSectionIndex(null);
+  }, [activeWorkout?.routeId]);
+
+  useEffect(() => {
+    if (selectedSectionIndex == null) return;
+    if (selectedSectionIndex >= workoutSectionKeys.length) {
+      setSelectedSectionIndex(null);
+    }
+  }, [selectedSectionIndex, workoutSectionKeys.length]);
+
+  const activeHighlightIndex = hoveredSectionIndex ?? selectedSectionIndex;
+  const highlightedRange = useMemo(() => {
+    if (activeHighlightIndex == null) return null;
+    return buildSectionRangeFromPois(workoutRoutePois, activeHighlightIndex, routeContext.track.length);
+  }, [activeHighlightIndex, workoutRoutePois, routeContext.track.length]);
+
+  const routePoisLoading = routeContext.status === "loading";
+  const routePoisError = routeContext.status === "error" ? routeContext.error ?? null : null;
+
+  useEffect(() => {
+    if (!workoutRouteAvailable && workoutTab !== "standard") {
+      setWorkoutTab("standard");
+    }
+  }, [workoutRouteAvailable, workoutTab]);
+
+  const sectionEffortMap = useMemo(() => {
+    const map = new Map<string, string>();
+    const entries = Array.isArray(activeWorkout.sectionEfforts)
+      ? activeWorkout.sectionEfforts
+      : [];
+    entries.forEach((entry) => {
+      if (entry?.sectionKey && entry?.effort) {
+        map.set(entry.sectionKey, entry.effort);
+      }
+    });
+    return map;
+  }, [activeWorkout.sectionEfforts]);
+
+  const workoutRouteValidation = useMemo(() => {
+    if (!activeWorkout.routeId) return null;
+    if (workoutSectionKeys.length === 0) {
+      return "Selected route has no workout POIs.";
+    }
+    const invalidKeys =
+      activeWorkout.sectionEfforts?.map((entry) => entry.sectionKey).filter(Boolean) ?? [];
+    const missing = invalidKeys.filter((key) => !workoutSectionKeys.includes(key));
+    if (missing.length > 0) {
+      return `Workout route efforts reference unknown sections: ${missing.join(", ")}`;
+    }
+    return null;
+  }, [activeWorkout.routeId, activeWorkout.sectionEfforts, workoutSectionKeys]);
+
+  const sanitizeWorkoutRoute = (workout: Workout): Workout => {
+    if (!workout.routeId) {
+      return {
+        ...workout,
+        routeMode: workout.routeMode ?? null,
+        sectionEfforts: Array.isArray(workout.sectionEfforts) ? workout.sectionEfforts : [],
+      };
+    }
+    const effortMap = new Map<string, string>();
+    const entries = Array.isArray(workout.sectionEfforts) ? workout.sectionEfforts : [];
+    entries.forEach((entry) => {
+      if (entry?.sectionKey && entry?.effort) {
+        effortMap.set(entry.sectionKey, entry.effort);
+      }
+    });
+    return {
+      ...workout,
+      routeMode: "fixed-sections",
+      sectionEfforts: buildSectionEffortList(workoutSectionKeys, effortMap),
+    };
+  };
 
   const confirmDiscardIfDirty = () => {
     if (!isDirty) return true;
@@ -413,14 +733,151 @@ export default function WorkoutBuilder() {
     setIsDirty(true);
   };
 
+  const handleAssignSectionEffort = (sectionKey: string, effortId: string) => {
+    if (!ensureDraftForBuilder()) return;
+    setCurrentWorkout((prev) => {
+      const effortMap = new Map<string, string>();
+      const existing = Array.isArray(prev.sectionEfforts) ? prev.sectionEfforts : [];
+      existing.forEach((entry) => {
+        if (entry?.sectionKey && entry?.effort) {
+          effortMap.set(entry.sectionKey, entry.effort);
+        }
+      });
+      effortMap.set(sectionKey, effortId);
+      const nextEfforts = buildSectionEffortList(workoutSectionKeys, effortMap);
+      return {
+        ...prev,
+        routeMode: prev.routeMode ?? "fixed-sections",
+        sectionEfforts: nextEfforts,
+      };
+    });
+    setIsDirty(true);
+  };
+
+  const handleClearSectionEffort = (sectionKey: string) => {
+    if (!ensureDraftForBuilder()) return;
+    setCurrentWorkout((prev) => {
+      const effortMap = new Map<string, string>();
+      const existing = Array.isArray(prev.sectionEfforts) ? prev.sectionEfforts : [];
+      existing.forEach((entry) => {
+        if (entry?.sectionKey && entry?.effort && entry.sectionKey !== sectionKey) {
+          effortMap.set(entry.sectionKey, entry.effort);
+        }
+      });
+      const nextEfforts = buildSectionEffortList(workoutSectionKeys, effortMap);
+      return {
+        ...prev,
+        sectionEfforts: nextEfforts,
+      };
+    });
+    setIsDirty(true);
+  };
+
+  const handleInsertAfterBlock = (tier: TierLabel, blockIndex: number, effortBlockId: string) => {
+    if (!ensureDraftForBuilder()) return;
+    const instance: WorkoutBlockInstance = {
+      id: `${tier}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      effortBlockId,
+      duration: null,
+      rest: null,
+      reps: null,
+      notes: null,
+    };
+
+    setCurrentWorkout((prev) => {
+      const variant = normalizeTierVariant(prev, tier);
+      const nextStructure = [...variant.structure];
+      const insertIndex = Math.min(Math.max(blockIndex + 1, 0), nextStructure.length);
+      nextStructure.splice(insertIndex, 0, buildSegmentFromBlock(instance));
+      return updateTierStructure(prev, tier, nextStructure);
+    });
+    setIsDirty(true);
+  };
+
+  const handleAddLadder = (tier: TierLabel, config: LadderConfig) => {
+    if (!ensureDraftForBuilder()) return;
+    const ladderSegments = buildLadderSegments(config);
+    if (ladderSegments.length === 0) return;
+
+    setCurrentWorkout((prev) => {
+      const variant = normalizeTierVariant(prev, tier);
+      const nextStructure = [...variant.structure, ...ladderSegments];
+      return updateTierStructure(prev, tier, nextStructure);
+    });
+    setIsDirty(true);
+  };
+
+  const handleDropStrengthBlock = (payload: StrengthLibraryPayload) => {
+    if (!ensureDraftForBuilder()) return;
+    const block = createStrengthBlockFromPayload(payload);
+    if (!block) return;
+    setCurrentWorkout((prev) => {
+      if ((prev.domain ?? "run") !== "strength") return prev;
+      const nextStructure = [...normalizeStrengthStructure(prev), block];
+      return { ...prev, strengthStructure: nextStructure };
+    });
+    setIsDirty(true);
+  };
+
+  const handleDeleteStrengthBlock = (blockId: string) => {
+    if (!ensureDraftForBuilder()) return;
+    setCurrentWorkout((prev) => {
+      if ((prev.domain ?? "run") !== "strength") return prev;
+      const nextStructure = normalizeStrengthStructure(prev).filter((block) => block.id !== blockId);
+      return { ...prev, strengthStructure: nextStructure };
+    });
+    setIsDirty(true);
+  };
+
+  const handleUpdateStrengthBlock = (blockId: string, updates: StrengthBlock) => {
+    if (!ensureDraftForBuilder()) return;
+    setCurrentWorkout((prev) => {
+      if ((prev.domain ?? "run") !== "strength") return prev;
+      const nextStructure = normalizeStrengthStructure(prev).map((block) =>
+        block.id === blockId ? updates : block
+      );
+      return { ...prev, strengthStructure: nextStructure };
+    });
+    setIsDirty(true);
+  };
+
+  const handleReorderStrengthBlocks = (nextBlocks: StrengthBlock[]) => {
+    if (!ensureDraftForBuilder()) return;
+    setCurrentWorkout((prev) => {
+      if ((prev.domain ?? "run") !== "strength") return prev;
+      return { ...prev, strengthStructure: nextBlocks };
+    });
+    setIsDirty(true);
+  };
+
+  const handleStrengthTypeChange = (nextType: StrengthWorkoutType) => {
+    if (!ensureDraftForBuilder()) return;
+    setCurrentWorkout((prev) => ({ ...prev, strengthType: nextType }));
+    setIsDirty(true);
+  };
+
+  const handleRouteSelection = (routeId: string) => {
+    if (!ensureDraftForBuilder()) return;
+    const trimmed = routeId.trim();
+    const nextRouteId = trimmed.length > 0 ? trimmed : null;
+    setCurrentWorkout((prev) => ({
+      ...prev,
+      routeId: nextRouteId,
+      routeMode: nextRouteId ? "fixed-sections" : null,
+      sectionEfforts: nextRouteId ? prev.sectionEfforts ?? [] : [],
+    }));
+    setIsDirty(true);
+  };
+
   const handleSaveDraft = async () => {
     if (mode !== "builder") return;
     if (!ensureDraftForBuilder()) return;
     try {
+      const draftPayload = sanitizeWorkoutRoute({ ...currentWorkout, status: "draft", version: 0 });
       const response = await fetch(buildStudioApiUrl("/workouts/upsert"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...currentWorkout, status: "draft", version: 0 }),
+        body: JSON.stringify(draftPayload),
       });
       if (!response.ok) {
         throw new Error(`API request failed: ${response.status}`);
@@ -441,10 +898,15 @@ export default function WorkoutBuilder() {
   const confirmPublish = async () => {
     if (!ensureDraftForBuilder()) return;
     try {
+      if (workoutRouteValidation) {
+        window.alert(`Workout route invalid:\n${workoutRouteValidation}`);
+        return;
+      }
+      const publishPayload = sanitizeWorkoutRoute(currentWorkout);
       const response = await fetch(buildStudioApiUrl("/workouts/publish"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workout: currentWorkout }),
+        body: JSON.stringify({ workout: publishPayload }),
       });
       if (!response.ok) {
         throw new Error(`API request failed: ${response.status}`);
@@ -466,7 +928,7 @@ export default function WorkoutBuilder() {
       if (mode === "builder") {
         await fetch(buildStudioApiUrl(`/workouts/draft/${currentWorkout.workoutId}`), { method: "DELETE" });
         await refreshWorkouts();
-        setCurrentWorkout(createDraftWorkout());
+        setCurrentWorkout(createDraftWorkout(activeDomain));
         setIsDirty(false);
         setMode("library");
         return;
@@ -492,11 +954,30 @@ export default function WorkoutBuilder() {
     setMode("library");
   };
 
+  const handleDomainChange = (nextDomain: WorkoutDomain) => {
+    if (nextDomain === activeDomain) return;
+    if (!confirmDiscardIfDirty()) return;
+    setCurrentWorkout(createDraftWorkout(nextDomain));
+    setPreviewWorkout(null);
+    setMode("builder");
+    setSelectedDomain(nextDomain);
+    setIsDirty(false);
+  };
+
+  const handleNewWorkout = () => {
+    if (!confirmDiscardIfDirty()) return;
+    setCurrentWorkout(createDraftWorkout(activeDomain));
+    setPreviewWorkout(null);
+    setMode("builder");
+    setIsDirty(false);
+  };
+
   const handleDuplicate = async () => {
     const source = mode === "preview" ? previewWorkout : currentWorkout;
     if (!source) return;
+    const normalizedSource = normalizeWorkoutDomain(source);
     const duplicate: Workout = {
-      ...source,
+      ...normalizedSource,
       workoutId: createWorkoutId(),
       status: "draft",
       version: 0,
@@ -516,8 +997,9 @@ export default function WorkoutBuilder() {
   const handleEditAsDraft = async () => {
     if (!previewWorkout) return;
     if (!confirmDiscardIfDirty()) return;
+    const normalized = normalizeWorkoutDomain(previewWorkout);
     const draft: Workout = {
-      ...previewWorkout,
+      ...normalized,
       status: "draft",
       version: 0,
       publishedAt: null,
@@ -534,8 +1016,9 @@ export default function WorkoutBuilder() {
   };
 
   const handleDuplicateFromLibrary = async (workout: Workout) => {
+    const normalized = normalizeWorkoutDomain(workout);
     const duplicate: Workout = {
-      ...workout,
+      ...normalized,
       workoutId: createWorkoutId(),
       status: "draft",
       version: 0,
@@ -553,8 +1036,9 @@ export default function WorkoutBuilder() {
   };
 
   const handleEditAsDraftFromLibrary = async (workout: Workout) => {
+    const normalized = normalizeWorkoutDomain(workout);
     const draft: Workout = {
-      ...workout,
+      ...normalized,
       status: "draft",
       version: 0,
       publishedAt: null,
@@ -579,9 +1063,25 @@ export default function WorkoutBuilder() {
     await refreshWorkouts();
   };
 
+  const handleDeleteDraftFromLibrary = async (workout: Workout) => {
+    if (workout.status !== "draft") return;
+    await fetch(buildStudioApiUrl(`/workouts/draft/${workout.workoutId}`), { method: "DELETE" });
+    await refreshWorkouts();
+  };
+
+  const handleDeleteArchivedFromLibrary = async (workout: Workout) => {
+    if (workout.status !== "archived") return;
+    await fetch(
+      buildStudioApiUrl(`/workouts/archive/${workout.workoutId}/${workout.version}`),
+      { method: "DELETE" }
+    );
+    await refreshWorkouts();
+  };
+
   const handleSelectDraft = (workout: Workout) => {
     if (!confirmDiscardIfDirty()) return;
     setCurrentWorkout(workout);
+    setSelectedDomain(workout.domain ?? "run");
     setMode("builder");
     setIsDirty(false);
   };
@@ -589,21 +1089,36 @@ export default function WorkoutBuilder() {
   const handleSelectPublished = (workout: Workout) => {
     if (!confirmDiscardIfDirty()) return;
     setPreviewWorkout(workout);
+    setSelectedDomain(workout.domain ?? "run");
     setMode("preview");
     setIsDirty(false);
   };
 
-  const workoutView = useMemo(() => workoutToView(mode === "preview" && previewWorkout ? previewWorkout : currentWorkout), [
-    mode,
-    previewWorkout,
-    currentWorkout,
-  ]);
+  const runWorkoutView = useMemo(() => {
+    if (activeDomain !== "run") return null;
+    return workoutToView(activeWorkout);
+  }, [activeDomain, activeWorkout]);
+
+  const strengthBlocks = useMemo(() => {
+    if (activeDomain !== "strength") return [];
+    return normalizeStrengthStructure(activeWorkout);
+  }, [activeDomain, activeWorkout]);
 
   const namesByTier = useMemo(() => {
-    return generateWorkoutNameByTier(workoutView.tiers, effortLookup);
-  }, [workoutView.tiers, effortLookup]);
+    if (!runWorkoutView) {
+      return { MED: "", LRG: "", XL: "", XXL: "" };
+    }
+    return generateWorkoutNameByTier(runWorkoutView.tiers, effortLookup);
+  }, [runWorkoutView, effortLookup]);
 
-  const libraryGroups = useMemo(() => groupWorkouts(workouts), [workouts]);
+  const libraryGroups = useMemo(() => {
+    const filtered = workouts.filter(
+      (workout) =>
+        (workout.domain ?? "run") === selectedDomain &&
+        workout.status !== "archived"
+    );
+    return groupWorkouts(filtered);
+  }, [workouts, selectedDomain]);
 
   if (mode === "builder" && currentWorkout.status !== "draft") {
     return (
@@ -647,11 +1162,15 @@ export default function WorkoutBuilder() {
       }}
     >
       <ActionBar
+        onNewWorkout={handleNewWorkout}
         onLibrary={handleLibrary}
         onDuplicate={handleDuplicate}
         onSaveDraft={handleSaveDraft}
         onPublish={handlePublish}
         onDelete={handleDelete}
+        domain={activeDomain}
+        onDomainChange={handleDomainChange}
+        domainLocked={isPreview}
       />
 
       {mode === "library" ? (
@@ -664,13 +1183,20 @@ export default function WorkoutBuilder() {
               const archived = group.archived[0];
               const display = draft ?? published ?? archived;
               const status = draft ? "Draft" : published ? "Published" : "Archived";
-              const preview = display ? workoutToView(display) : null;
+              const isStrength = (display?.domain ?? "run") === "strength";
+              const preview = display && !isStrength ? workoutToView(display) : null;
               const previewNames = preview ? generateWorkoutNameByTier(preview.tiers, effortLookup) : null;
+              const strengthCount = display ? normalizeStrengthStructure(display).length : 0;
               return (
                 <div key={group.workoutId} style={libraryCardStyle}>
                   <div style={{ fontSize: "12px", fontWeight: 700 }}>{display?.name ?? "Untitled Workout"}</div>
                   <div style={{ fontSize: "11px", color: "#c9c9c9" }}>{status}</div>
                   <div style={{ fontSize: "10px", color: "#8f8f8f" }}>Latest v{display?.version ?? 0}</div>
+                  {isStrength && (
+                    <div style={{ fontSize: "10px", color: "#b5b5b5", marginTop: "6px" }}>
+                      {resolveStrengthTypeLabel(display?.strengthType)} · {strengthCount} blocks
+                    </div>
+                  )}
                   {previewNames && (
                     <div style={{ fontSize: "10px", color: "#b5b5b5", display: "flex", flexDirection: "column", gap: "4px", marginTop: "8px" }}>
                       {Object.entries(previewNames).map(([tier, name]) => (
@@ -692,6 +1218,30 @@ export default function WorkoutBuilder() {
                         {published && (
                           <button type="button" onClick={() => handleArchiveFromLibrary(published)} style={libraryActionStyle}>
                             Archive
+                          </button>
+                        )}
+                        {draft && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!window.confirm("Delete this draft workout?")) return;
+                              handleDeleteDraftFromLibrary(draft);
+                            }}
+                            style={libraryActionStyle}
+                          >
+                            Delete Draft
+                          </button>
+                        )}
+                        {archived && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!window.confirm("Delete this archived workout? This cannot be undone.")) return;
+                              handleDeleteArchivedFromLibrary(archived);
+                            }}
+                            style={libraryActionStyle}
+                          >
+                            Delete Archive
                           </button>
                         )}
                         <button
@@ -723,7 +1273,14 @@ export default function WorkoutBuilder() {
         </div>
       ) : (
         <div style={{ display: "flex", flex: 1 }}>
-          {mode === "builder" && <BlockLibrarySidebar />}
+          {mode === "builder" && activeDomain === "run" && <BlockLibrarySidebar />}
+          {mode === "builder" && activeDomain === "strength" && (
+            <StrengthBlockLibrarySidebar
+              activeType={activeWorkout.strengthType ?? "strength_general"}
+              onTypeChange={handleStrengthTypeChange}
+              isLocked={isLocked}
+            />
+          )}
 
           <main
             style={{
@@ -771,9 +1328,9 @@ export default function WorkoutBuilder() {
               )}
 
               <WorkoutMetadata
-                name={workoutView.name}
-                description={workoutView.description}
-                tags={workoutView.tags}
+                name={activeWorkout.name ?? null}
+                description={activeWorkout.description ?? null}
+                tags={activeWorkout.focus ?? []}
                 isLocked={isLocked}
                 onNameChange={(value) => {
                   if (!ensureDraftForBuilder()) return;
@@ -794,29 +1351,278 @@ export default function WorkoutBuilder() {
                 }}
               />
 
-              <WorkoutChart
-                draft={workoutView}
-                effortLookup={effortLookup}
-                showXXL={false}
-              />
-              <TierColumns
-                showXXL={false}
-                tierBlocks={workoutView.tiers}
-                effortLookup={effortLookup}
-                availableEffortBlocks={effortBlocks}
-                onDropEffortBlock={handleDropEffortBlock}
-                onDeleteBlock={handleDeleteBlock}
-                onUpdateBlock={handleUpdateBlock}
-                onReorderBlocks={handleReorderBlocks}
-                onMoveBlocks={handleMoveBlocks}
-                onCopyBlock={handleCopyBlock}
-                onCopyTier={handleCopyTier}
-                isLocked={isLocked}
-              />
+              {activeDomain === "run" && (
+                <section
+                  style={{
+                    border: "1px solid #2a2f3a",
+                    borderRadius: "14px",
+                    padding: "12px",
+                    backgroundColor: "#0f1115",
+                    display: "grid",
+                    gap: "10px",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#e5e7eb" }}>
+                        Workout Route (optional)
+                      </div>
+                      <div style={{ fontSize: "11px", color: "#9aa1ad", marginTop: "4px" }}>
+                        Select a route group with workout POIs to enable the Workout Route tab.
+                      </div>
+                    </div>
+                    <select
+                      value={activeWorkout.routeId ?? ""}
+                      onChange={(event) => handleRouteSelection(event.target.value)}
+                      disabled={isLocked}
+                      style={{
+                        padding: "8px 10px",
+                        borderRadius: "8px",
+                        border: "1px solid #2b2b2b",
+                        backgroundColor: "#0b0b0b",
+                        color: "#f5f5f5",
+                        fontSize: "12px",
+                        minWidth: "220px",
+                      }}
+                    >
+                      <option value="">No route selected</option>
+                      {routeGroups.map((group) => (
+                        <option key={group.routeGroupId} value={group.routeGroupId}>
+                          {group.routeGroupId} - {group.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {activeWorkout.routeId && (
+                    <div style={{ fontSize: "11px", color: "#7e8798" }}>
+                      {routePoisLoading
+                        ? "Loading workout POIs..."
+                        : routePoisError
+                          ? `Route POIs error: ${routePoisError}`
+                          : workoutRoutePois.length > 0
+                            ? `${workoutRoutePois.length} workout POIs detected.`
+                            : "No workout POIs found for this route yet."}
+                      {routeContext.status === "ready" && routeContext.variant && (
+                        <div style={{ marginTop: "4px", color: "#6b7280" }}>
+                          Preview variant: {routeContext.variant}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {workoutRouteValidation && (
+                    <div style={{ fontSize: "11px", color: "#ff9c9c" }}>{workoutRouteValidation}</div>
+                  )}
+                </section>
+              )}
+
+              {activeDomain === "run" && workoutRouteAvailable && (
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setWorkoutTab("standard")}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: "999px",
+                      border:
+                        workoutTab === "standard" ? "1px solid #4b6bff" : "1px solid #2b2b2b",
+                      background: workoutTab === "standard" ? "#1a2240" : "#0b0f17",
+                      color: "#f5f5f5",
+                      fontSize: "11px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Standard Workout
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWorkoutTab("route")}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: "999px",
+                      border:
+                        workoutTab === "route" ? "1px solid #4b6bff" : "1px solid #2b2b2b",
+                      background: workoutTab === "route" ? "#1a2240" : "#0b0f17",
+                      color: "#f5f5f5",
+                      fontSize: "11px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Workout Route
+                  </button>
+                </div>
+              )}
+
+              {activeDomain === "run" && runWorkoutView && workoutTab === "standard" && (
+                <>
+                  <WorkoutChart
+                    draft={runWorkoutView}
+                    effortLookup={effortLookup}
+                    showXXL={false}
+                  />
+                  <TierColumns
+                    showXXL={false}
+                    tierBlocks={runWorkoutView.tiers}
+                    effortLookup={effortLookup}
+                  availableEffortBlocks={effortBlocks}
+                  onDropEffortBlock={handleDropEffortBlock}
+                  onAddLadder={handleAddLadder}
+                  onDeleteBlock={handleDeleteBlock}
+                  onUpdateBlock={handleUpdateBlock}
+                  onInsertAfterBlock={handleInsertAfterBlock}
+                  onReorderBlocks={handleReorderBlocks}
+                    onMoveBlocks={handleMoveBlocks}
+                    onCopyBlock={handleCopyBlock}
+                    onCopyTier={handleCopyTier}
+                    isLocked={isLocked}
+                  />
+                </>
+              )}
+              {activeDomain === "run" && workoutTab === "route" && workoutRouteAvailable && (
+                <div style={{ display: "grid", gap: "18px" }}>
+                  <div style={{ fontSize: "11px", color: "#7e8798" }}>
+                    Section length is determined by the route.
+                  </div>
+                  <div style={{ display: "grid", gap: "8px" }}>
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        letterSpacing: "0.14em",
+                        textTransform: "uppercase",
+                        color: "#9aa1ad",
+                      }}
+                    >
+                      Effort
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: sectionTemplate, gap: "6px" }}>
+                      {workoutSectionKeys.map((sectionKey, index) => {
+                        const effortId = sectionEffortMap.get(sectionKey);
+                        const effort = effortId ? effortLookup[effortId] : null;
+                        const accent = effort?.accent ?? "#334155";
+                        const background = effort ? `${accent}22` : "#0b0f17";
+                        const isSelected = selectedSectionIndex === index;
+                        return (
+                          <div
+                            key={`${sectionKey}-${index}`}
+                            onClick={() => setSelectedSectionIndex(index)}
+                            onMouseEnter={() => setHoveredSectionIndex(index)}
+                            onMouseLeave={() => setHoveredSectionIndex(null)}
+                            onDragOver={(event) => {
+                              if (isLocked) return;
+                              event.preventDefault();
+                              setHoveredSectionIndex(index);
+                            }}
+                            onDrop={(event) => {
+                              if (isLocked) return;
+                              event.preventDefault();
+                              const payload = parseEffortDropPayload(event);
+                              if (!payload) return;
+                              handleAssignSectionEffort(sectionKey, payload.effortBlockId);
+                              setHoveredSectionIndex(null);
+                            }}
+                            style={{
+                              minHeight: "70px",
+                              borderRadius: "10px",
+                              border: `1px solid ${isSelected ? "#38bdf8" : effort ? accent : "#243043"}`,
+                              background,
+                              padding: "8px",
+                              display: "flex",
+                              flexDirection: "column",
+                              justifyContent: "space-between",
+                              gap: "6px",
+                              textAlign: "center",
+                              cursor: "pointer",
+                              boxShadow: isSelected ? "0 0 0 1px rgba(56, 189, 248, 0.35)" : undefined,
+                            }}
+                          >
+                            <div style={{ fontSize: "10px", color: "#9aa1ad" }}>{sectionKey}</div>
+                            <div style={{ fontSize: "12px", fontWeight: 700, color: "#f5f5f5" }}>
+                              {effort ? effort.label : "Drop effort"}
+                            </div>
+                            {effort && !isLocked && (
+                              <button
+                                type="button"
+                                onClick={() => handleClearSectionEffort(sectionKey)}
+                                style={{
+                                  alignSelf: "center",
+                                  padding: "2px 6px",
+                                  borderRadius: "999px",
+                                  border: "1px solid #2b2b2b",
+                                  background: "#0b0f17",
+                                  color: "#cbd5f5",
+                                  fontSize: "10px",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gap: "10px" }}>
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        letterSpacing: "0.14em",
+                        textTransform: "uppercase",
+                        color: "#9aa1ad",
+                      }}
+                    >
+                      Context Preview
+                    </div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: "10px",
+                        gridTemplateColumns: "minmax(0, 1fr)",
+                      }}
+                    >
+                      <RouteMapPreview
+                        track={routeContext.track}
+                        pois={workoutRoutePois}
+                        highlightedRange={highlightedRange}
+                      />
+                      <RouteElevationPreview
+                        track={routeContext.track}
+                        poiMarkers={workoutRoutePois}
+                        highlightedRange={highlightedRange}
+                      />
+                    </div>
+                    {routeContext.status === "error" && (
+                      <div style={{ fontSize: "11px", color: "#ff9c9c" }}>
+                        Route preview error: {routeContext.error}
+                      </div>
+                    )}
+                    <div style={{ fontSize: "11px", color: "#7e8798" }}>
+                      This is an approximate preview for authoring. Final section geometry and elevation are
+                      computed after publish. Elevation and section metrics are finalized after publish.
+                    </div>
+                  </div>
+                </div>
+              )}
+              {activeDomain === "strength" && (
+                <>
+                  <StrengthWorkoutPreview blocks={strengthBlocks} />
+                  <StrengthColumns
+                    blocks={strengthBlocks}
+                    isLocked={isLocked}
+                    onDropStrengthBlock={handleDropStrengthBlock}
+                    onDeleteBlock={handleDeleteStrengthBlock}
+                    onUpdateBlock={handleUpdateStrengthBlock}
+                    onReorderBlocks={handleReorderStrengthBlocks}
+                  />
+                </>
+              )}
             </div>
           </main>
 
-          <SummarySidebar draft={workoutView} effortLookup={effortLookup} />
+          {activeDomain === "run" && runWorkoutView && (
+            <SummarySidebar draft={runWorkoutView} effortLookup={effortLookup} />
+          )}
+          {activeDomain === "strength" && <StrengthSummarySidebar blocks={strengthBlocks} />}
         </div>
       )}
 
@@ -854,13 +1660,25 @@ export default function WorkoutBuilder() {
               <div><strong>Tags:</strong> {currentWorkout.focus.length > 0 ? currentWorkout.focus.join(", ") : "None"}</div>
               <div><strong>Description:</strong> {currentWorkout.description ?? ""}</div>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              {Object.entries(namesByTier).map(([tier, name]) => (
-                <div key={tier} style={{ fontSize: "12px" }}>
-                  <strong>{tier}:</strong> {name}
+            {activeDomain === "run" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                {Object.entries(namesByTier).map(([tier, name]) => (
+                  <div key={tier} style={{ fontSize: "12px" }}>
+                    <strong>{tier}:</strong> {name}
+                  </div>
+                ))}
+              </div>
+            )}
+            {activeDomain === "strength" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <div style={{ fontSize: "12px" }}>
+                  <strong>Type:</strong> {resolveStrengthTypeLabel(currentWorkout.strengthType)}
                 </div>
-              ))}
-            </div>
+                <div style={{ fontSize: "12px" }}>
+                  <strong>Blocks:</strong> {normalizeStrengthStructure(currentWorkout).length}
+                </div>
+              </div>
+            )}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
               <button type="button" onClick={() => setShowPublishOverlay(false)} style={previewActionStyle}>
                 Cancel

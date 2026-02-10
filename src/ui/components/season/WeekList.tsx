@@ -1,6 +1,7 @@
 import type { DayKey, Season, WeekInstance } from "../../../season";
 import type { WeekPreset } from "./presets";
 import WeekCard from "./WeekCard";
+import type { EventSummary } from "../../hooks/useEvents";
 
 type WeekWithIndex = {
   blockId: string;
@@ -21,6 +22,7 @@ type WeekListProps = {
   onUpdateWeek: (weekId: string, patch: Partial<WeekInstance>) => void;
   quickEdit: boolean;
   workoutLabels: Record<string, string>;
+  eventLookup: Record<string, EventSummary>;
   weekPresetDrag: WeekPreset | null;
   weekPresetTargetId: string | null;
   isWeekPresetDragActive: boolean;
@@ -41,6 +43,7 @@ export default function WeekList({
   onUpdateWeek,
   quickEdit,
   workoutLabels,
+  eventLookup,
   weekPresetDrag,
   weekPresetTargetId,
   isWeekPresetDragActive,
@@ -72,6 +75,7 @@ export default function WeekList({
           onDragOverPreset={() => onDragOverWeekPreset(week.weekId)}
           onDropPreset={() => onDropWeekPreset(week.weekId)}
           presetLabel={getPresetLabelForWeek(week)}
+          eventLookup={eventLookup}
         />
       ))}
     </div>

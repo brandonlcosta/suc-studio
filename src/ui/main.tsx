@@ -8,6 +8,8 @@ import RouteManager from "./screens/RouteManager";
 import EventBuilder from "./screens/EventBuilder";
 import RosterBuilder from "./screens/RosterBuilder";
 import ChallengeBuilder from "./screens/ChallengeBuilder";
+import TipsManager from "./screens/TipsManager";
+import RouteIntelBuilder from "./screens/RouteIntelBuilder/RouteIntelBuilder";
 
 console.log("[STUDIO] VITE_API_BASE =", import.meta.env.VITE_API_BASE);
 
@@ -84,6 +86,12 @@ function StudioNav() {
       <NavLink to="/studio/challenges" style={linkStyle}>
         Challenges
       </NavLink>
+      <NavLink to="/studio/route-intel" style={linkStyle}>
+        Route Intel
+      </NavLink>
+      <NavLink to="/tips" style={linkStyle}>
+        Tips
+      </NavLink>
     </nav>
   );
 }
@@ -111,6 +119,8 @@ function AppShell() {
         <Route path="/seasons" element={<SeasonBuilder />} />
         <Route path="/studio/roster" element={<RosterBuilder />} />
         <Route path="/studio/challenges" element={<ChallengeBuilder />} />
+        <Route path="/studio/route-intel" element={<RouteIntelBuilder />} />
+        <Route path="/tips" element={<TipsManager />} />
       </Routes>
     </>
   );

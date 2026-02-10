@@ -123,6 +123,8 @@ export interface Week {
     sun: string | null;
   };
   notes?: string;
+  eventIds?: string[];
+  eventRoles?: Record<string, "goal" | "tuneup" | "simulation" | "social">;
 }
 
 /**

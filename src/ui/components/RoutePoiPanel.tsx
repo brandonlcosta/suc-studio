@@ -6,9 +6,11 @@ import {
   ensureStartFinishPoi,
   getRouteGroup,
   getRoutePois,
+  saveAidStationPoi,
+  saveWorkoutPoi,
   snapRoutePoi,
 } from "../utils/api";
-import { getCoordinateAtDistance, type RouteStats } from "../utils/routeMath";
+import { getCoordinateAtDistance, snapToRoute, type RouteStats } from "../utils/routeMath";
 import {
   VARIANT_INTERSECTION_THRESHOLD_M,
   getIntersectingVariants,
@@ -35,6 +37,14 @@ function slugify(value: string): string {
     .slice(0, 64);
 }
 
+function isAidStationPoi(poi: RoutePoiRecord | null): boolean {
+  return Boolean(poi && poi.type === "aid-station");
+}
+
+function isWorkoutPoi(poi: RoutePoiRecord | null): boolean {
+  return Boolean(poi && poi.type === "workout");
+}
+
 function isRouteLabel(value: string): value is RouteLabel {
   return ROUTE_LABELS.has(value as RouteLabel);
 }
@@ -45,6 +55,10 @@ function formatEtaMinutes(totalMinutes: number): string {
   const hours = Math.floor(rounded / 60);
   const minutes = rounded % 60;
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function getPoiDisplayName(poi: RoutePoiRecord): string {
+  return poi.label ?? poi.title ?? poi.id;
 }
 
 type RoutePoiVariantPlacement = {
@@ -141,7 +155,15 @@ interface RoutePoiPanelProps {
 type RoutePoiRecord = {
   id: string;
   type: string;
-  title: string;
+  title?: string;
+  label?: string;
+  routePointIndex?: number;
+  metadata?: {
+    water?: boolean;
+    nutrition?: boolean;
+    crewAccess?: boolean;
+    dropBags?: boolean;
+  };
   system?: boolean;
   locked?: boolean;
   variants?: Record<
@@ -194,8 +216,20 @@ export default function RoutePoiPanel({
   mapHeight,
 }: RoutePoiPanelProps) {
   const [viewMode, setViewMode] = useState<"authoring" | "cue">("authoring");
+  const [authoringMode, setAuthoringMode] = useState<"poi" | "aid-station" | "workout">("poi");
   const [poiType, setPoiType] = useState("");
   const [poiTitle, setPoiTitle] = useState("");
+  const [aidStationId, setAidStationId] = useState("");
+  const [aidStationLabel, setAidStationLabel] = useState("");
+  const [aidStationMetadata, setAidStationMetadata] = useState({
+    water: false,
+    nutrition: false,
+    crewAccess: false,
+    dropBags: false,
+  });
+  const [aidStationDistanceMi, setAidStationDistanceMi] = useState("");
+  const [workoutPoiId, setWorkoutPoiId] = useState("");
+  const [workoutPoiLabel, setWorkoutPoiLabel] = useState("");
   const [selectedVariants, setSelectedVariants] = useState<RouteLabel[]>([]);
   const [availableVariants, setAvailableVariants] = useState<RouteLabel[]>(LABELS);
   const [activeVariant, setActiveVariant] = useState<RouteLabel | "">("");
@@ -230,6 +264,17 @@ export default function RoutePoiPanel({
     setPoiTitle("");
     setSelectedVariants([]);
     setVariantAssignmentNote(null);
+    setAidStationId("");
+    setAidStationLabel("");
+    setAidStationMetadata({
+      water: false,
+      nutrition: false,
+      crewAccess: false,
+      dropBags: false,
+    });
+    setAidStationDistanceMi("");
+    setWorkoutPoiId("");
+    setWorkoutPoiLabel("");
   }, []);
 
   const variantOptions = availableVariants.length > 0 ? availableVariants : LABELS;
@@ -239,6 +284,8 @@ export default function RoutePoiPanel({
   const previewVariant = activeVariantLabel || undefined;
   const canDragPois = Boolean(activeVariantLabel);
   const activePoi = activePoiId ? pois.find((poi) => poi.id === activePoiId) : null;
+  const isAidStationActive = isAidStationPoi(activePoi);
+  const isWorkoutActive = isWorkoutPoi(activePoi);
   const isActivePoiLocked = Boolean(activePoi?.locked || activePoi?.system);
   const activeRouteStats = activeVariantLabel
     ? routeStatsByVariant[activeVariantLabel]
@@ -269,6 +316,18 @@ export default function RoutePoiPanel({
     setHoveredRowPoiId(null);
     setVariantAssignmentNote(null);
     manualVariantOverrideRef.current.clear();
+    setAuthoringMode("poi");
+    setAidStationId("");
+    setAidStationLabel("");
+    setAidStationMetadata({
+      water: false,
+      nutrition: false,
+      crewAccess: false,
+      dropBags: false,
+    });
+    setAidStationDistanceMi("");
+    setWorkoutPoiId("");
+    setWorkoutPoiLabel("");
   }, [routeGroupId]);
 
   useEffect(() => {
@@ -332,7 +391,7 @@ export default function RoutePoiPanel({
             const etaMinutes = placement.distanceMi * pace;
             return {
               poiId: poi.id,
-              name: poi.title || poi.id,
+              name: getPoiDisplayName(poi),
               type: poi.type,
               distanceMi: placement.distanceMi,
               etaMinutes,
@@ -526,6 +585,43 @@ export default function RoutePoiPanel({
       setActivePoiId(null);
       return;
     }
+    const displayLabel = activePoi.label ?? activePoi.title ?? "";
+
+    if (activePoi.type === "aid-station") {
+      setAuthoringMode("aid-station");
+      setAidStationId(activePoi.id);
+      setAidStationLabel(activePoi.title ?? "");
+      setAidStationMetadata({
+        water: Boolean(activePoi.metadata?.water),
+        nutrition: Boolean(activePoi.metadata?.nutrition),
+        crewAccess: Boolean(activePoi.metadata?.crewAccess),
+        dropBags: Boolean(activePoi.metadata?.dropBags),
+      });
+      setAidStationDistanceMi("");
+      setPoiType("");
+      setPoiTitle("");
+      setSelectedVariants([]);
+      setVariantAssignmentNote(null);
+      setWorkoutPoiId("");
+      setWorkoutPoiLabel("");
+      return;
+    }
+
+    if (activePoi.type === "workout") {
+      setAuthoringMode("workout");
+      setWorkoutPoiId(activePoi.id);
+      setWorkoutPoiLabel(displayLabel);
+      setPoiType("");
+      setPoiTitle("");
+      setSelectedVariants([]);
+      setVariantAssignmentNote(null);
+      setAidStationId("");
+      setAidStationLabel("");
+      setAidStationDistanceMi("");
+      return;
+    }
+
+    setAuthoringMode("poi");
     setPoiType(activePoi.type ?? "");
     setPoiTitle(activePoi.title ?? "");
     const variants = Object.keys(activePoi.variants ?? {}).filter(isRouteLabel);
@@ -537,6 +633,7 @@ export default function RoutePoiPanel({
     if (!activePoiId || !activeVariantLabel) return;
     const activePoi = pois.find((poi) => poi.id === activePoiId);
     if (!activePoi) return;
+    if (activePoi.type === "aid-station" || activePoi.type === "workout") return;
     if (!activePoi.variants?.[activeVariantLabel]) {
       setActivePoiId(null);
     }
@@ -575,6 +672,14 @@ export default function RoutePoiPanel({
     poiTitle.trim().length > 0 &&
     Boolean(activeVariantLabel) &&
     !activePoiId;
+  const readyToSnapAidStation =
+    routeGroupId.trim().length > 0 &&
+    aidStationLabel.trim().length > 0 &&
+    Boolean(activeVariantLabel);
+  const readyToSnapWorkout =
+    routeGroupId.trim().length > 0 &&
+    workoutPoiLabel.trim().length > 0 &&
+    Boolean(activeVariantLabel);
 
   const handleRouteData = useCallback((label: RouteLabel, stats: RouteStats) => {
     if (!stats) return;
@@ -615,6 +720,14 @@ export default function RoutePoiPanel({
 
   const resolvePoiCoordinate = useCallback(
     (poi: RoutePoiRecord) => {
+      if (
+        (poi.type === "aid-station" || poi.type === "workout") &&
+        Number.isFinite(poi.routePointIndex)
+      ) {
+        const stats = activeVariantLabel ? routeStatsByVariant[activeVariantLabel] : null;
+        const coord = stats?.coords?.[poi.routePointIndex ?? -1];
+        if (coord) return { lat: coord[1], lon: coord[0] };
+      }
       if (!poi.variants) return null;
       if (activeVariantLabel && poi.variants[activeVariantLabel]) {
         const placement = getPrimaryPlacement(
@@ -627,7 +740,7 @@ export default function RoutePoiPanel({
       if (!placement) return null;
       return { lat: placement.lat, lon: placement.lon };
     },
-    [activeVariantLabel]
+    [activeVariantLabel, routeStatsByVariant]
   );
 
   const clearActivePoiSelection = useCallback(() => {
@@ -701,10 +814,101 @@ export default function RoutePoiPanel({
     ]
   );
 
+  const saveAidStationAtIndex = useCallback(
+    async (routePointIndex: number) => {
+      if (!routeGroupId.trim()) {
+        setError("Select a route group before saving an aid station.");
+        return false;
+      }
+      if (!Number.isFinite(routePointIndex) || routePointIndex < 0) {
+        setError("Aid station requires a valid route point index.");
+        return false;
+      }
+
+      const resolvedId = (aidStationId.trim() || slugify(aidStationLabel)).trim();
+      if (!resolvedId) {
+        setError("Aid station ID is required.");
+        return false;
+      }
+      if (!aidStationLabel.trim()) {
+        setError("Aid station label is required.");
+        return false;
+      }
+
+      try {
+        const result = await saveAidStationPoi(routeGroupId, {
+          id: resolvedId,
+          title: aidStationLabel.trim(),
+          routePointIndex,
+          metadata: { ...aidStationMetadata },
+        });
+        const updatedPoi = result.poi as RoutePoiRecord;
+        const nextPois = Array.isArray(result.pois) ? (result.pois as RoutePoiRecord[]) : [];
+        setPois(nextPois);
+        setActivePoiId(updatedPoi?.id ?? resolvedId);
+        setAidStationId(updatedPoi?.id ?? resolvedId);
+        setMessage(`Aid station saved (${resolvedId}).`);
+        return true;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed to save aid station";
+        setError(msg);
+        return false;
+      }
+    },
+    [routeGroupId, aidStationId, aidStationLabel, aidStationMetadata]
+  );
+
+  const saveWorkoutPoiAtIndex = useCallback(
+    async (routePointIndex: number) => {
+      if (!routeGroupId.trim()) {
+        setError("Select a route group before saving a workout POI.");
+        return false;
+      }
+      if (!Number.isFinite(routePointIndex) || routePointIndex < 0) {
+        setError("Workout POI requires a valid route point index.");
+        return false;
+      }
+
+      const resolvedId = (workoutPoiId.trim() || slugify(workoutPoiLabel)).trim();
+      if (!resolvedId) {
+        setError("Workout POI ID is required.");
+        return false;
+      }
+      if (!workoutPoiLabel.trim()) {
+        setError("Workout POI label is required.");
+        return false;
+      }
+
+      try {
+        const result = await saveWorkoutPoi(routeGroupId, {
+          id: resolvedId,
+          label: workoutPoiLabel.trim(),
+          routePointIndex,
+        });
+        const updatedPoi = result.poi as RoutePoiRecord;
+        const nextPois = Array.isArray(result.pois) ? (result.pois as RoutePoiRecord[]) : [];
+        setPois(nextPois);
+        setActivePoiId(updatedPoi?.id ?? resolvedId);
+        setWorkoutPoiId(updatedPoi?.id ?? resolvedId);
+        setMessage(`Workout POI saved (${resolvedId}).`);
+        return true;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed to save workout POI";
+        setError(msg);
+        return false;
+      }
+    },
+    [routeGroupId, workoutPoiId, workoutPoiLabel]
+  );
+
   const handleMapClick = async (payload: MapClickPayload) => {
     setMessage(null);
     setError(null);
-    if (clearActivePoiSelection()) return;
+    const shouldClear = !(
+      (authoringMode === "aid-station" && isAidStationActive) ||
+      (authoringMode === "workout" && isWorkoutActive)
+    );
+    if (shouldClear && clearActivePoiSelection()) return;
     if (!activeVariantLabel) {
       setError("Select an active route variant before clicking the map.");
       return;
@@ -713,12 +917,28 @@ export default function RoutePoiPanel({
       setError("Route data not loaded yet. Wait for the route to render.");
       return;
     }
+    if (authoringMode === "aid-station") {
+      await saveAidStationAtIndex(payload.snap.index);
+      return;
+    }
+    if (authoringMode === "workout") {
+      await saveWorkoutPoiAtIndex(payload.snap.index);
+      return;
+    }
     await placePoiAtPosition({ lat: payload.snap.lat, lon: payload.snap.lon });
   };
 
   const handlePlaceAtDistance = async () => {
     setMessage(null);
     setError(null);
+    if (authoringMode === "aid-station") {
+      setError("Aid stations must be placed by clicking the route.");
+      return;
+    }
+    if (authoringMode === "workout") {
+      setError("Workout POIs must be placed by clicking the route.");
+      return;
+    }
     if (clearActivePoiSelection()) return;
     if (!activeVariantLabel) {
       setError("Select an active route variant before placing by distance.");
@@ -773,6 +993,10 @@ export default function RoutePoiPanel({
     if (!activePoiId) return;
     const target = pois.find((poi) => poi.id === activePoiId);
     if (!target) return;
+    if (target.type === "aid-station" || target.type === "workout") {
+      setError("Aid stations and workout POIs do not use variant snapping.");
+      return;
+    }
     if (routeVariantGeoms.length === 0) {
       setError("Route data not loaded yet. Wait for the route to render.");
       return;
@@ -808,6 +1032,111 @@ export default function RoutePoiPanel({
     }
   };
 
+  const handleAidStationSave = async () => {
+    setMessage(null);
+    setError(null);
+    if (!routeGroupId.trim()) {
+      setError("Select a route group before saving.");
+      return;
+    }
+    const resolvedId = (aidStationId.trim() || slugify(aidStationLabel)).trim();
+    if (!resolvedId) {
+      setError("Aid station ID is required.");
+      return;
+    }
+    if (!aidStationLabel.trim()) {
+      setError("Aid station label is required.");
+      return;
+    }
+    const targetIndex = isAidStationActive
+      ? Number(activePoi?.routePointIndex)
+      : NaN;
+    if (!Number.isFinite(targetIndex) || targetIndex < 0) {
+      setError("Aid station needs a valid route point index. Click the route to place it.");
+      return;
+    }
+
+    await saveAidStationAtIndex(targetIndex);
+  };
+
+  const handleWorkoutPoiSave = async () => {
+    setMessage(null);
+    setError(null);
+    if (!routeGroupId.trim()) {
+      setError("Select a route group before saving.");
+      return;
+    }
+    const resolvedId = (workoutPoiId.trim() || slugify(workoutPoiLabel)).trim();
+    if (!resolvedId) {
+      setError("Workout POI ID is required.");
+      return;
+    }
+    if (!workoutPoiLabel.trim()) {
+      setError("Workout POI label is required.");
+      return;
+    }
+    const targetIndex =
+      isWorkoutActive && Number.isFinite(activePoi?.routePointIndex)
+        ? (activePoi?.routePointIndex as number)
+        : null;
+    if (targetIndex === null) {
+      setError("Click the route to place the workout POI first.");
+      return;
+    }
+
+    const saved = await saveWorkoutPoiAtIndex(targetIndex);
+    if (saved) {
+      setMessage(`Workout POI saved (${resolvedId}).`);
+    }
+  };
+
+  const handleAidStationPlaceByDistance = async () => {
+    setMessage(null);
+    setError(null);
+    if (!activeVariantLabel) {
+      setError("Select an active route variant before placing by distance.");
+      return;
+    }
+    if (!activeRouteStats) {
+      setError("Route data not loaded yet. Wait for the route to render.");
+      return;
+    }
+    if (!aidStationDistanceMi.trim()) {
+      setError("Enter a distance in miles.");
+      return;
+    }
+    const raw = Number(aidStationDistanceMi);
+    if (!Number.isFinite(raw)) {
+      setError("Enter a valid mile value.");
+      return;
+    }
+    if (!Number.isFinite(activeRouteStats.totalMiles) || activeRouteStats.totalMiles <= 0) {
+      setError("Route distance unavailable.");
+      return;
+    }
+
+    const clamped = Math.min(Math.max(raw, 0), activeRouteStats.totalMiles);
+    if (raw !== clamped) {
+      setAidStationDistanceMi(clamped.toFixed(2));
+    }
+
+    const result = getCoordinateAtDistance(activeRouteStats, clamped);
+    if (!result) {
+      setError("Unable to resolve a coordinate for that distance.");
+      return;
+    }
+
+    const saved = await saveAidStationAtIndex(result.index);
+    if (saved) {
+      setMapFocus({
+        lat: result.lat,
+        lon: result.lon,
+        zoom: 14,
+        id: `aid-station-distance-${Date.now()}`,
+      });
+    }
+  };
+
   const handleEnsureStartFinish = async () => {
     if (!routeGroupId.trim()) return;
     setMessage(null);
@@ -826,6 +1155,17 @@ export default function RoutePoiPanel({
 
   const handlePoiRowFocus = (poi: RoutePoiRecord) => {
     handlePoiSelect(poi.id);
+    if (poi.type === "aid-station" || poi.type === "workout") {
+      const coord = resolvePoiCoordinate(poi);
+      if (!coord) return;
+      setMapFocus({
+        lat: coord.lat,
+        lon: coord.lon,
+        zoom: 14,
+        id: `poi-${poi.id}-${Date.now()}`,
+      });
+      return;
+    }
     const placementValue =
       (activeVariantLabel && (poi.variants?.[activeVariantLabel] as RoutePoiVariantValue)) ||
       (poi.variants ? (Object.values(poi.variants)[0] as RoutePoiVariantValue) : undefined);
@@ -851,6 +1191,46 @@ export default function RoutePoiPanel({
     }
 
     try {
+      if (target.type === "aid-station") {
+        const snapped = snapToRoute(activeRouteStats ?? null, position);
+        if (!snapped) {
+          setError("Unable to resolve route point for aid station.");
+          return;
+        }
+        const result = await saveAidStationPoi(routeGroupId, {
+          id: target.id,
+          title: target.title ?? "",
+          routePointIndex: snapped.index,
+          metadata: {
+            water: Boolean(target.metadata?.water),
+            nutrition: Boolean(target.metadata?.nutrition),
+            crewAccess: Boolean(target.metadata?.crewAccess),
+            dropBags: Boolean(target.metadata?.dropBags),
+          },
+        });
+        const nextPois = Array.isArray(result.pois) ? (result.pois as RoutePoiRecord[]) : [];
+        setPois(nextPois);
+        setMessage(`Aid station moved (${poiId}).`);
+        return;
+      }
+
+      if (target.type === "workout") {
+        const snapped = snapToRoute(activeRouteStats ?? null, position);
+        if (!snapped) {
+          setError("Unable to resolve route point for workout POI.");
+          return;
+        }
+        const result = await saveWorkoutPoi(routeGroupId, {
+          id: target.id,
+          label: target.label ?? target.title ?? target.id,
+          routePointIndex: snapped.index,
+        });
+        const nextPois = Array.isArray(result.pois) ? (result.pois as RoutePoiRecord[]) : [];
+        setPois(nextPois);
+        setMessage(`Workout POI moved (${poiId}).`);
+        return;
+      }
+
       const autoVariants = applyAutoVariantSelection(position);
       const result = await snapRoutePoi(routeGroupId, {
         poi: {
@@ -921,6 +1301,30 @@ export default function RoutePoiPanel({
       setError(msg);
     }
   }, [activePoiId, pois, resetForm, routeGroupId]);
+
+  const handleDeletePoiById = useCallback(
+    async (poiId: string) => {
+      if (!routeGroupId.trim()) return;
+      setMessage(null);
+      setError(null);
+      try {
+        const result = await deleteRoutePoi(routeGroupId, poiId);
+        const nextPois = Array.isArray(result.pois)
+          ? (result.pois as RoutePoiRecord[])
+          : [];
+        setPois(nextPois);
+        if (activePoiId === poiId) {
+          setActivePoiId(null);
+          resetForm();
+        }
+        setMessage(`POI deleted (${poiId}).`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed to delete POI";
+        setError(msg);
+      }
+    },
+    [activePoiId, resetForm, routeGroupId]
+  );
 
   const handleCopyCueSheet = async () => {
     if (!cueSheetText) {
@@ -999,7 +1403,13 @@ export default function RoutePoiPanel({
       </div>
 
       <h3 style={{ color: "#f5f5f5", marginBottom: "0.75rem" }}>
-        {viewMode === "cue" ? "Cue Sheet" : "POI Authoring"}
+        {viewMode === "cue"
+          ? "Cue Sheet"
+          : authoringMode === "aid-station"
+            ? "Aid Station Authoring"
+            : authoringMode === "workout"
+              ? "Workout POI Authoring"
+              : "POI Authoring"}
       </h3>
 
       <div style={{ display: "grid", gap: "0.5rem", maxWidth: controlsMaxWidth, marginBottom: "1rem" }}>
@@ -1050,7 +1460,77 @@ export default function RoutePoiPanel({
 
       {viewMode === "authoring" ? (
         <div style={{ display: "grid", gap: "0.75rem", maxWidth: authoringMaxWidth }}>
-          <div style={{ display: "grid", gap: "0.5rem" }}>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthoringMode("poi");
+                if (isAidStationActive || isWorkoutActive) {
+                  setActivePoiId(null);
+                  resetForm();
+                }
+              }}
+              style={{
+                padding: "0.3rem 0.75rem",
+                borderRadius: "999px",
+                border: authoringMode === "poi" ? "1px solid #4b6bff" : "1px solid #2b2b2b",
+                background: authoringMode === "poi" ? "#1a2240" : "#0b0f17",
+                color: "#f5f5f5",
+                cursor: "pointer",
+                fontSize: "0.75rem",
+              }}
+            >
+              POIs
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthoringMode("aid-station");
+                if (activePoiId && !isAidStationActive) {
+                  setActivePoiId(null);
+                  resetForm();
+                }
+              }}
+              style={{
+                padding: "0.3rem 0.75rem",
+                borderRadius: "999px",
+                border:
+                  authoringMode === "aid-station" ? "1px solid #4b6bff" : "1px solid #2b2b2b",
+                background: authoringMode === "aid-station" ? "#1a2240" : "#0b0f17",
+                color: "#f5f5f5",
+                cursor: "pointer",
+                fontSize: "0.75rem",
+              }}
+            >
+              Aid Stations
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthoringMode("workout");
+                if (activePoiId && !isWorkoutActive) {
+                  setActivePoiId(null);
+                  resetForm();
+                }
+              }}
+              style={{
+                padding: "0.3rem 0.75rem",
+                borderRadius: "999px",
+                border:
+                  authoringMode === "workout" ? "1px solid #4b6bff" : "1px solid #2b2b2b",
+                background: authoringMode === "workout" ? "#1a2240" : "#0b0f17",
+                color: "#f5f5f5",
+                cursor: "pointer",
+                fontSize: "0.75rem",
+              }}
+            >
+              Workout POIs
+            </button>
+          </div>
+
+          {authoringMode === "poi" ? (
+            <>
+              <div style={{ display: "grid", gap: "0.5rem" }}>
             <label style={{ fontSize: "0.85rem", color: "#999999" }}>POI Type</label>
             <select
               value={poiType}
@@ -1077,7 +1557,7 @@ export default function RoutePoiPanel({
             </select>
           </div>
 
-          <div style={{ display: "grid", gap: "0.5rem" }}>
+              <div style={{ display: "grid", gap: "0.5rem" }}>
             <label style={{ fontSize: "0.85rem", color: "#999999" }}>Title</label>
             <input
               value={poiTitle}
@@ -1098,7 +1578,7 @@ export default function RoutePoiPanel({
             />
           </div>
 
-          <div style={{ display: "grid", gap: "0.5rem" }}>
+              <div style={{ display: "grid", gap: "0.5rem" }}>
             <label style={{ fontSize: "0.85rem", color: "#999999" }}>Variants</label>
             <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
               {variantOptions.map((label) => {
@@ -1174,7 +1654,7 @@ export default function RoutePoiPanel({
             </div>
           </div>
 
-          <div style={{ display: "grid", gap: "0.4rem" }}>
+              <div style={{ display: "grid", gap: "0.4rem" }}>
             <label style={{ fontSize: "0.85rem", color: "#999999" }}>
               Place POI at mile
             </label>
@@ -1219,8 +1699,8 @@ export default function RoutePoiPanel({
             )}
           </div>
 
-          {activePoiId && (
-            <div style={{ display: "grid", gap: "0.75rem" }}>
+              {activePoiId && (
+                <div style={{ display: "grid", gap: "0.75rem" }}>
               <div style={{ display: "grid", gap: "0.35rem" }}>
                 <div style={{ fontSize: "0.85rem", color: "#999999" }}>POI Hits</div>
                 {activePoi?.variants &&
@@ -1292,6 +1772,207 @@ export default function RoutePoiPanel({
               >
                 {isActivePoiLocked ? "System POI (locked)" : "Delete POI"}
               </button>
+                </div>
+              )}
+            </>
+          ) : authoringMode === "workout" ? (
+            <div style={{ display: "grid", gap: "0.75rem" }}>
+              <div style={{ display: "grid", gap: "0.5rem" }}>
+                <label style={{ fontSize: "0.85rem", color: "#999999" }}>Workout POI ID</label>
+                <input
+                  value={workoutPoiId}
+                  onChange={(e) => setWorkoutPoiId(e.target.value)}
+                  style={{ padding: "0.5rem", border: "1px solid #2b2b2b" }}
+                  placeholder="wk-climb-start"
+                />
+                <div style={{ fontSize: "0.7rem", color: "#7e8798" }}>
+                  Leave blank to auto-generate from the label.
+                </div>
+                {isWorkoutActive && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActivePoiId(null);
+                      resetForm();
+                    }}
+                    style={{
+                      alignSelf: "flex-start",
+                      padding: "0.35rem 0.6rem",
+                      borderRadius: "6px",
+                      border: "1px solid #2b2b2b",
+                      background: "#0f1522",
+                      color: "#f5f5f5",
+                      cursor: "pointer",
+                      fontSize: "0.7rem",
+                    }}
+                  >
+                    New Workout POI
+                  </button>
+                )}
+              </div>
+              <div style={{ display: "grid", gap: "0.5rem" }}>
+                <label style={{ fontSize: "0.85rem", color: "#999999" }}>Label</label>
+                <input
+                  value={workoutPoiLabel}
+                  onChange={(e) => setWorkoutPoiLabel(e.target.value)}
+                  style={{ padding: "0.5rem", border: "1px solid #2b2b2b" }}
+                  placeholder="Main climb starts"
+                />
+              </div>
+              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                <button
+                  type="button"
+                  onClick={handleWorkoutPoiSave}
+                  disabled={!workoutPoiLabel.trim() || !isWorkoutActive}
+                  style={{
+                    padding: "0.45rem 0.75rem",
+                    borderRadius: "6px",
+                    border: "1px solid #2b2b2b",
+                    background:
+                      !workoutPoiLabel.trim() || !isWorkoutActive ? "#131a2a" : "#0f1522",
+                    color: "#f5f5f5",
+                    cursor:
+                      !workoutPoiLabel.trim() || !isWorkoutActive ? "not-allowed" : "pointer",
+                    fontSize: "0.8rem",
+                  }}
+                >
+                  Save Workout POI
+                </button>
+                {Number.isFinite(activePoi?.routePointIndex) && (
+                  <span style={{ fontSize: "0.75rem", color: "#7e8798" }}>
+                    Route index: {activePoi?.routePointIndex}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: "0.75rem", color: "#7e8798" }}>
+                Click the route preview to place the workout POI. Use "New Workout POI" to add another.
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: "0.75rem" }}>
+              <div style={{ display: "grid", gap: "0.5rem" }}>
+                <label style={{ fontSize: "0.85rem", color: "#999999" }}>Aid Station ID</label>
+                <input
+                  value={aidStationId}
+                  onChange={(e) => setAidStationId(e.target.value)}
+                  style={{ padding: "0.5rem", border: "1px solid #2b2b2b" }}
+                  placeholder="as-12"
+                />
+              </div>
+              <div style={{ display: "grid", gap: "0.5rem" }}>
+                <label style={{ fontSize: "0.85rem", color: "#999999" }}>Label</label>
+                <input
+                  value={aidStationLabel}
+                  onChange={(e) => setAidStationLabel(e.target.value)}
+                  style={{ padding: "0.5rem", border: "1px solid #2b2b2b" }}
+                  placeholder="Aid Station – Mile 12"
+                />
+              </div>
+              <div style={{ display: "grid", gap: "0.4rem" }}>
+                <label style={{ fontSize: "0.85rem", color: "#999999" }}>
+                  Set by distance (mi)
+                </label>
+                <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={aidStationDistanceMi}
+                    onChange={(e) => setAidStationDistanceMi(e.target.value)}
+                    style={{ padding: "0.5rem", border: "1px solid #2b2b2b", flex: 1 }}
+                    placeholder={maxDistanceMi ? `0 - ${maxDistanceMi.toFixed(2)}` : "e.g. 12.5"}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAidStationPlaceByDistance}
+                    disabled={!readyToSnapAidStation}
+                    style={{
+                      padding: "0.45rem 0.75rem",
+                      borderRadius: "6px",
+                      border: "1px solid #2b2b2b",
+                      background: !readyToSnapAidStation ? "#131a2a" : "#0f1522",
+                      color: "#f5f5f5",
+                      cursor: !readyToSnapAidStation ? "not-allowed" : "pointer",
+                      fontSize: "0.8rem",
+                    }}
+                  >
+                    Place
+                  </button>
+                </div>
+                {maxDistanceMi !== null && (
+                  <div style={{ fontSize: "0.75rem", color: "#666" }}>
+                    Route range: 0.00 - {maxDistanceMi.toFixed(2)} mi
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "grid", gap: "0.35rem" }}>
+                <div style={{ fontSize: "0.85rem", color: "#999999" }}>Capabilities</div>
+                <label style={{ display: "flex", gap: "0.4rem", color: "#f5f5f5" }}>
+                  <input
+                    type="checkbox"
+                    checked={aidStationMetadata.water}
+                    onChange={(e) =>
+                      setAidStationMetadata((prev) => ({ ...prev, water: e.target.checked }))
+                    }
+                  />
+                  Water
+                </label>
+                <label style={{ display: "flex", gap: "0.4rem", color: "#f5f5f5" }}>
+                  <input
+                    type="checkbox"
+                    checked={aidStationMetadata.nutrition}
+                    onChange={(e) =>
+                      setAidStationMetadata((prev) => ({ ...prev, nutrition: e.target.checked }))
+                    }
+                  />
+                  Nutrition
+                </label>
+                <label style={{ display: "flex", gap: "0.4rem", color: "#f5f5f5" }}>
+                  <input
+                    type="checkbox"
+                    checked={aidStationMetadata.crewAccess}
+                    onChange={(e) =>
+                      setAidStationMetadata((prev) => ({ ...prev, crewAccess: e.target.checked }))
+                    }
+                  />
+                  Crew access
+                </label>
+                <label style={{ display: "flex", gap: "0.4rem", color: "#f5f5f5" }}>
+                  <input
+                    type="checkbox"
+                    checked={aidStationMetadata.dropBags}
+                    onChange={(e) =>
+                      setAidStationMetadata((prev) => ({ ...prev, dropBags: e.target.checked }))
+                    }
+                  />
+                  Drop bags
+                </label>
+              </div>
+              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                <button
+                  type="button"
+                  onClick={handleAidStationSave}
+                  style={{
+                    padding: "0.45rem 0.75rem",
+                    borderRadius: "6px",
+                    border: "1px solid #2b2b2b",
+                    background: "#0f1522",
+                    color: "#f5f5f5",
+                    cursor: "pointer",
+                    fontSize: "0.8rem",
+                  }}
+                >
+                  Save Aid Station
+                </button>
+                {Number.isFinite(activePoi?.routePointIndex) && (
+                  <span style={{ fontSize: "0.75rem", color: "#7e8798" }}>
+                    Route index: {activePoi?.routePointIndex}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: "0.75rem", color: "#7e8798" }}>
+                Click the route or set by distance to place the aid station.
+              </div>
             </div>
           )}
         </div>
@@ -1375,12 +2056,17 @@ export default function RoutePoiPanel({
     </div>
   );
 
+  const nonWorkoutPois = useMemo(
+    () => pois.filter((poi) => poi.type !== "workout"),
+    [pois]
+  );
+
   const existingPois = viewMode === "authoring" ? (
     <div>
       <div style={{ color: "#999999", fontSize: "0.85rem", marginBottom: "0.5rem" }}>
         Existing POIs
       </div>
-      {pois.length === 0 ? (
+      {nonWorkoutPois.length === 0 ? (
         <div style={{ color: "#666", fontSize: "0.8rem" }}>No POIs yet.</div>
       ) : (
         <table style={{ width: "100%", fontSize: "0.8rem", color: "#f5f5f5" }}>
@@ -1400,7 +2086,7 @@ export default function RoutePoiPanel({
             </tr>
           </thead>
           <tbody>
-            {pois.map((poi) => {
+            {nonWorkoutPois.map((poi) => {
               const variants = poi.variants ? Object.keys(poi.variants).sort() : [];
               const variantSummaries = variants.map((label) => {
                 const value = poi.variants?.[label] as RoutePoiVariantValue | undefined;
@@ -1486,7 +2172,7 @@ export default function RoutePoiPanel({
                   <td>{poi.id}</td>
                   <td>{poi.type}</td>
                   <td>
-                    <span>{poi.title}</span>
+                    <span>{getPoiDisplayName(poi)}</span>
                     {poi.system && (
                       <span
                         style={{
@@ -1521,11 +2207,191 @@ export default function RoutePoiPanel({
     </div>
   ) : null;
 
+  const aidStations = useMemo(() => {
+    return pois
+      .filter((poi) => poi.type === "aid-station" && Number.isFinite(poi.routePointIndex))
+      .sort((a, b) => (a.routePointIndex ?? 0) - (b.routePointIndex ?? 0));
+  }, [pois]);
+
+  const workoutPois = useMemo(() => {
+    return pois
+      .filter((poi) => poi.type === "workout" && Number.isFinite(poi.routePointIndex))
+      .sort((a, b) => (a.routePointIndex ?? 0) - (b.routePointIndex ?? 0));
+  }, [pois]);
+
+  const aidStationList = viewMode === "authoring" ? (
+    <div style={{ marginBottom: "1rem" }}>
+      <div style={{ color: "#999999", fontSize: "0.85rem", marginBottom: "0.5rem" }}>
+        Aid Stations
+      </div>
+      {aidStations.length === 0 ? (
+        <div style={{ color: "#666", fontSize: "0.8rem" }}>No aid stations yet.</div>
+      ) : (
+        <div style={{ display: "grid", gap: "0.5rem" }}>
+          {aidStations.map((poi) => (
+            <div
+              key={poi.id}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "0.5rem 0.6rem",
+                borderRadius: "8px",
+                border: poi.id === activePoiId ? "1px solid #4b6bff" : "1px solid #1f2734",
+                background: poi.id === activePoiId ? "#162033" : "#0b0f17",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => handlePoiRowFocus(poi)}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.2rem",
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
+                  color: "#e5e7eb",
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                <span style={{ fontWeight: 600 }}>{getPoiDisplayName(poi)}</span>
+                <span style={{ fontSize: "0.7rem", color: "#7e8798" }}>
+                  Index: {poi.routePointIndex}
+                </span>
+              </button>
+              <div style={{ display: "flex", gap: "0.4rem" }}>
+                <button
+                  type="button"
+                  onClick={() => handlePoiRowFocus(poi)}
+                  style={{
+                    padding: "0.25rem 0.5rem",
+                    borderRadius: "6px",
+                    border: "1px solid #2b2b2b",
+                    background: "#0f1522",
+                    color: "#f5f5f5",
+                    fontSize: "0.7rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeletePoiById(poi.id)}
+                  style={{
+                    padding: "0.25rem 0.5rem",
+                    borderRadius: "6px",
+                    border: "1px solid #3a1a1a",
+                    background: "#2a1212",
+                    color: "#ffb4b4",
+                    fontSize: "0.7rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  ) : null;
+
+  const workoutPoiList = viewMode === "authoring" ? (
+    <div style={{ marginBottom: "1rem" }}>
+      <div style={{ color: "#999999", fontSize: "0.85rem", marginBottom: "0.5rem" }}>
+        Workout POIs
+      </div>
+      {workoutPois.length === 0 ? (
+        <div style={{ color: "#666", fontSize: "0.8rem" }}>No workout POIs yet.</div>
+      ) : (
+        <div style={{ display: "grid", gap: "0.5rem" }}>
+          {workoutPois.map((poi, index) => (
+            <div
+              key={poi.id}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "0.5rem 0.6rem",
+                borderRadius: "8px",
+                border: poi.id === activePoiId ? "1px solid #4b6bff" : "1px solid #1f2734",
+                background: poi.id === activePoiId ? "#162033" : "#0b0f17",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => handlePoiRowFocus(poi)}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.2rem",
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
+                  color: "#e5e7eb",
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                <span style={{ fontWeight: 600 }}>
+                  {index + 1}. {getPoiDisplayName(poi)}
+                </span>
+                <span style={{ fontSize: "0.7rem", color: "#7e8798" }}>
+                  Index: {poi.routePointIndex} - ID: {poi.id}
+                </span>
+              </button>
+              <div style={{ display: "flex", gap: "0.4rem" }}>
+                <button
+                  type="button"
+                  onClick={() => handlePoiRowFocus(poi)}
+                  style={{
+                    padding: "0.25rem 0.5rem",
+                    borderRadius: "6px",
+                    border: "1px solid #2b2b2b",
+                    background: "#0f1522",
+                    color: "#f5f5f5",
+                    fontSize: "0.7rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeletePoiById(poi.id)}
+                  style={{
+                    padding: "0.25rem 0.5rem",
+                    borderRadius: "6px",
+                    border: "1px solid #3a1a1a",
+                    background: "#2a1212",
+                    color: "#ffb4b4",
+                    fontSize: "0.7rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  ) : null;
+
   const viewer = (
     <div style={{ marginTop: isSplit ? 0 : "1rem" }}>
       {viewMode === "authoring" && (
         <div style={{ color: "#999999", fontSize: "0.85rem", marginBottom: "0.5rem" }}>
-          Click the route preview to place a POI.
+          {authoringMode === "aid-station"
+            ? "Click the route preview to place an aid station."
+            : authoringMode === "workout"
+              ? "Click the route preview to place a workout POI."
+              : "Click the route preview to place a POI."}
         </div>
       )}
       <div
@@ -1534,7 +2400,11 @@ export default function RoutePoiPanel({
           background: "#0b0b0b",
           cursor:
             viewMode === "authoring"
-              ? readyToSnap
+              ? authoringMode === "aid-station"
+                ? readyToSnapAidStation
+                : authoringMode === "workout"
+                ? readyToSnapWorkout
+                : readyToSnap
                 ? "crosshair"
                 : activePoiId
                   ? "default"
@@ -1575,7 +2445,11 @@ export default function RoutePoiPanel({
           }}
         >
           <div>{controls}</div>
-          <div>{existingPois}</div>
+          <div>
+            {aidStationList}
+            {workoutPoiList}
+            {existingPois}
+          </div>
         </div>
       )}
 
@@ -1586,7 +2460,13 @@ export default function RoutePoiPanel({
         <div style={{ marginTop: "0.75rem", color: "#ff9999" }}>{error}</div>
       )}
 
-      {!isSplit && existingPois && <div style={{ marginTop: "1rem" }}>{existingPois}</div>}
+      {!isSplit && (
+        <div style={{ marginTop: "1rem" }}>
+          {aidStationList}
+          {workoutPoiList}
+          {existingPois}
+        </div>
+      )}
     </div>
   );
 

@@ -43,6 +43,12 @@ export const effortBlocks: EffortBlockDefinition[] = [
     accent: "#ff5a5a",
   },
   {
+    id: "ladder",
+    label: "Ladder",
+    target: "Zone 5 | 90%+ Max HR | 9 RPE",
+    accent: "#34d399",
+  },
+  {
     id: "strides",
     label: "Strides",
     target: "Zone 5 | -% Max HR | 8-9 RPE",

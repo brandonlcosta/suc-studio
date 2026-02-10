@@ -50,6 +50,30 @@ function cumulativeDistancesMeters(points: LatLon[]): number[] {
   return distances;
 }
 
+function getPoiSortRank(poi: RoutePoi): number {
+  if (poi.type === "aid-station") return 0;
+  if (poi.type === "workout") return 1;
+  return 2;
+}
+
+function sortPoisByAidStationOrder(pois: RoutePoi[]): RoutePoi[] {
+  const indexed = pois.map((poi, index) => ({ poi, index }));
+  indexed.sort((a, b) => {
+    const aRank = getPoiSortRank(a.poi);
+    const bRank = getPoiSortRank(b.poi);
+    if (aRank !== bRank) return aRank - bRank;
+
+    if (aRank <= 1 && bRank <= 1) {
+      const aIndex = Number.isFinite(a.poi.routePointIndex) ? a.poi.routePointIndex ?? 0 : 0;
+      const bIndex = Number.isFinite(b.poi.routePointIndex) ? b.poi.routePointIndex ?? 0 : 0;
+      if (aIndex !== bIndex) return aIndex - bIndex;
+    }
+
+    return a.index - b.index;
+  });
+  return indexed.map((entry) => entry.poi);
+}
+
 // Configure multer for GPX file uploads (memory storage for parsing)
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -286,6 +310,147 @@ router.post("/:groupId/pois/snap", (req, res) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Snap POI error:", error);
+    return res.status(400).json({ error: message });
+  }
+});
+
+/**
+ * POST /api/routes/:groupId/pois/aid-station
+ * Save or update an aid-station POI with routePointIndex + metadata (no derived data).
+ */
+router.post("/:groupId/pois/aid-station", (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const body = req.body as { poi?: Partial<RoutePoi> };
+    const poi = body?.poi;
+
+    if (!poi || typeof poi !== "object") {
+      return res.status(400).json({ error: "Invalid aid station payload." });
+    }
+
+    const id = String(poi.id ?? "").trim();
+    const title = String(poi.title ?? "").trim();
+    const routePointIndex = Number(poi.routePointIndex);
+    if (!id || !title) {
+      return res.status(400).json({ error: "Aid station id and title are required." });
+    }
+    if (!Number.isFinite(routePointIndex) || routePointIndex < 0) {
+      return res.status(400).json({ error: "routePointIndex must be a number >= 0." });
+    }
+
+    const metadata = {
+      water: Boolean(poi.metadata?.water),
+      nutrition: Boolean(poi.metadata?.nutrition),
+      crewAccess: Boolean(poi.metadata?.crewAccess),
+      dropBags: Boolean(poi.metadata?.dropBags),
+    };
+
+    const doc = loadRoutePois(groupId);
+    const existingIndex = doc.pois.findIndex((item) => item.id === id);
+    const base: RoutePoi =
+      existingIndex >= 0
+        ? doc.pois[existingIndex]
+        : {
+            id,
+            title,
+            type: "aid-station",
+            variants: {},
+          };
+
+    base.id = id;
+    base.title = title;
+    base.type = "aid-station";
+    base.routePointIndex = routePointIndex;
+    base.metadata = metadata;
+    base.variants = {};
+    delete (base as any).drop;
+
+    if (existingIndex >= 0) {
+      doc.pois[existingIndex] = base;
+    } else {
+      doc.pois.push(base);
+    }
+
+    doc.pois = sortPoisByAidStationOrder(doc.pois);
+
+    console.log("[SAVE_ROUTE_POIS] POI count:", doc.pois.length);
+    saveRoutePois(groupId, doc);
+
+    return res.json({
+      success: true,
+      poi: base,
+      pois: doc.pois,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Aid station POI error:", error);
+    return res.status(400).json({ error: message });
+  }
+});
+
+/**
+ * POST /api/routes/:groupId/pois/workout
+ * Save or update a workout POI with routePointIndex (no derived data).
+ */
+router.post("/:groupId/pois/workout", (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const body = req.body as { poi?: Partial<RoutePoi> };
+    const poi = body?.poi;
+
+    if (!poi || typeof poi !== "object") {
+      return res.status(400).json({ error: "Invalid workout POI payload." });
+    }
+
+    const id = String(poi.id ?? "").trim();
+    const label = String(poi.label ?? poi.title ?? "").trim();
+    const routePointIndex = Number(poi.routePointIndex);
+    if (!id || !label) {
+      return res.status(400).json({ error: "Workout POI id and label are required." });
+    }
+    if (!Number.isFinite(routePointIndex) || routePointIndex < 0) {
+      return res.status(400).json({ error: "routePointIndex must be a number >= 0." });
+    }
+
+    const doc = loadRoutePois(groupId);
+    const existingIndex = doc.pois.findIndex((item) => item.id === id);
+    const base: RoutePoi =
+      existingIndex >= 0
+        ? doc.pois[existingIndex]
+        : {
+            id,
+            type: "workout",
+          };
+
+    base.id = id;
+    base.label = label;
+    base.type = "workout";
+    base.routePointIndex = Math.floor(routePointIndex);
+    if (poi.notes) base.notes = String(poi.notes);
+    delete base.title;
+    delete base.variants;
+    delete (base as any).metadata;
+    delete (base as any).drop;
+
+    if (existingIndex >= 0) {
+      doc.pois[existingIndex] = base;
+    } else {
+      doc.pois.push(base);
+    }
+
+    doc.pois = sortPoisByAidStationOrder(doc.pois);
+
+    console.log("[SAVE_ROUTE_POIS] POI count:", doc.pois.length);
+    saveRoutePois(groupId, doc);
+
+    return res.json({
+      success: true,
+      poi: base,
+      pois: doc.pois,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Workout POI error:", error);
     return res.status(400).json({ error: message });
   }
 });

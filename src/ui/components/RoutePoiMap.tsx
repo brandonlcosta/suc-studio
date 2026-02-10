@@ -113,7 +113,15 @@ function extractLineFeatures(
 type RoutePoiRecord = {
   id: string;
   type: string;
-  title: string;
+  title?: string;
+  label?: string;
+  routePointIndex?: number;
+  metadata?: {
+    water?: boolean;
+    nutrition?: boolean;
+    crewAccess?: boolean;
+    dropBags?: boolean;
+  };
   system?: boolean;
   locked?: boolean;
   variants?: Record<

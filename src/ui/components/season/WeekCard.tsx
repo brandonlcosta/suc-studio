@@ -3,6 +3,7 @@ import CalendarWeekGrid from "./CalendarWeekGrid";
 import type { WeekPreset } from "./presets";
 import { WEEK_PRESETS } from "./presets";
 import WeekPresetSlot from "./WeekPresetSlot";
+import type { EventSummary } from "../../hooks/useEvents";
 
 type WeekCardProps = {
   week: WeekInstance;
@@ -23,6 +24,7 @@ type WeekCardProps = {
   presetLabel: string | null;
   selectedDayKey: DayKey | null;
   workoutLabels: Record<string, string>;
+  eventLookup: Record<string, EventSummary>;
   onSelectDay: (dayKey: DayKey) => void;
 };
 
@@ -45,6 +47,7 @@ export default function WeekCard({
   presetLabel,
   selectedDayKey,
   workoutLabels,
+  eventLookup,
   onSelectDay,
 }: WeekCardProps) {
   const handleFocusChange = (nextFocus: WeekInstance["focus"]) => {
@@ -164,6 +167,8 @@ export default function WeekCard({
             compact={quickEdit}
             dayAssignments={week.days}
             workoutLabels={workoutLabels}
+            eventLookup={eventLookup}
+            weekEventIds={week.eventIds}
             selectedDay={isSelected ? selectedDayKey : null}
             onSelectDay={(dayKey) => {
               if (isBusy) return;

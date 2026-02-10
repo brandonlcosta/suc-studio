@@ -167,7 +167,17 @@ function effortIdFromZone(zone: number | null): string {
   return "interval";
 }
 
+function isStrideTarget(target?: IntervalTarget | null): boolean {
+  if (!target) return false;
+  const extended = target as IntervalTarget & { paceTag?: string };
+  if (typeof extended.paceTag === "string" && extended.paceTag.toLowerCase() === "strides") {
+    return true;
+  }
+  return typeof target.zone === "string" && /stride/i.test(target.zone);
+}
+
 function resolveEffortBlockId(target?: IntervalTarget | null): string {
+  if (isStrideTarget(target)) return "strides";
   const zoneNumber = target?.zone ? parseZoneNumber(target.zone) : null;
   return effortIdFromZone(zoneNumber ?? 1);
 }

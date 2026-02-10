@@ -13,6 +13,7 @@ import {
   type WeekInstance,
 } from "../../../season";
 import { loadWorkoutsMaster } from "../../utils/api";
+import { useEvents } from "../../hooks/useEvents";
 import type { Workout } from "../../types";
 import BlockList from "./BlockList";
 import SeasonHeader from "./SeasonHeader";
@@ -98,6 +99,13 @@ export default function SeasonLayout() {
   const [calendarCursorIndex, setCalendarCursorIndex] = useState<number | null>(null);
   const blockRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [workoutOptions, setWorkoutOptions] = useState<Array<{ workoutId: string; name: string }>>([]);
+  const { events: eventOptions, isLoading: isLoadingEvents } = useEvents();
+  const eventLookup = useMemo(() => {
+    return eventOptions.reduce<Record<string, (typeof eventOptions)[number]>>((acc, event) => {
+      acc[event.eventId] = event;
+      return acc;
+    }, {});
+  }, [eventOptions]);
 
   const setActionLoading = useCallback((key: ActionKey, value: boolean) => {
     setLoading((prev) => ({ ...prev, [key]: value }));
@@ -495,6 +503,24 @@ export default function SeasonLayout() {
       if (!target) return;
       const baseDays = normalizeWeekDays(target.week.days);
       const nextDay = { ...baseDays[dayKey], ...patch };
+      if ("workoutId" in patch && !("workoutIds" in patch)) {
+        const workoutId = patch.workoutId && patch.workoutId.trim().length > 0 ? patch.workoutId.trim() : undefined;
+        if (workoutId) {
+          nextDay.workoutIds = [workoutId];
+        } else {
+          delete nextDay.workoutIds;
+        }
+        delete nextDay.workoutId;
+      }
+      if (Array.isArray(nextDay.workoutIds)) {
+        const cleaned = nextDay.workoutIds.map((id) => id.trim()).filter(Boolean).slice(0, 2);
+        if (cleaned.length > 0) {
+          nextDay.workoutIds = cleaned;
+          delete nextDay.workoutId;
+        } else {
+          delete nextDay.workoutIds;
+        }
+      }
       if (nextDay.workoutId === "") {
         delete nextDay.workoutId;
       }
@@ -534,6 +560,23 @@ export default function SeasonLayout() {
       );
     },
     [allWeeks, normalizeWeekDays, runMutation, season, selectedWeekId]
+  );
+
+  const handleUpdateWeekEvents = useCallback(
+    async (eventIds: string[]) => {
+      if (!season || !selectedWeekId) return;
+      const target = allWeeks.find((entry) => entry.week.weekId === selectedWeekId);
+      if (!target) return;
+      await runMutation(
+        toMutation("updateWeek", {
+          blockId: target.blockId,
+          weekId: target.week.weekId,
+          partialUpdate: { eventIds },
+        }),
+        "mutate"
+      );
+    },
+    [allWeeks, runMutation, season, selectedWeekId]
   );
 
   const handleScrollToBlock = useCallback((blockId: string) => {
@@ -847,6 +890,7 @@ export default function SeasonLayout() {
               onDropWeekPreset={handleWeekPresetDrop}
               getPresetLabelForWeek={getPresetLabelForWeek}
               workoutLabels={workoutLabels}
+              eventLookup={eventLookup}
             />
           </div>
           <InspectorPanel
@@ -856,8 +900,11 @@ export default function SeasonLayout() {
             selectedWeekStartDate={selectedWeekStartDate}
             selectedDayKey={selectedDayKey}
             workoutOptions={workoutOptions}
+            eventOptions={eventOptions}
+            isLoadingEvents={isLoadingEvents}
             onUpdateDay={handleUpdateDay}
             onClearDay={handleClearDay}
+            onUpdateWeekEvents={handleUpdateWeekEvents}
           />
         </div>
       )}

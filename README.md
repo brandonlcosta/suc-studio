@@ -1,10 +1,28 @@
 # SUC Studio
 
-This repo is the authoring layer for SUC-Workout. It includes a timeline editor
-UI that reads/writes workouts via the canonical write adapter.
-Web-based control plane for editing canonical data in [suc-shared-data](../suc-shared-data).
+**The authoring layer for SUC-OS.** Web-based control plane for editing canonical data in [suc-shared-data](../suc-shared-data).
 
 **Studio is strictly an editor**—it does NOT compile, render, or generate viewer artifacts.
+
+## 📚 SUC-OS Platform Documentation
+
+This repo is the **Authoring Layer** in the SUC-OS platform architecture.
+
+**Quick Links**:
+- [SUC-OS Overview](../suc-shared-data/docs/SUC-OS-README.md) - Platform architecture and philosophy
+- [Architecture](../suc-shared-data/docs/ARCHITECTURE.md) - System design and layer model
+- [Data Flow](../suc-shared-data/docs/DATA_FLOW.md) - How data moves through the platform
+- [Developer Onboarding](../suc-shared-data/docs/DEVELOPER_ONBOARDING.md) - Get started developing locally
+- [Contributor Workflow](../suc-shared-data/docs/CONTRIBUTOR_WORKFLOW.md) - How to add/modify content
+- [Anti-Patterns](../suc-shared-data/docs/ANTI_PATTERNS.md) - What NOT to do
+
+**Role in SUC-OS**:
+- **Layer**: Authoring
+- **Responsibility**: Human-facing content creation, validation, and publishing
+- **Upstream**: None (this is where content originates)
+- **Downstream**: Publishes validated data to `suc-shared-data`
+
+---
 
 ## Architecture
 
@@ -83,6 +101,7 @@ See `.env.example` for required variables.
 ## Notes
 - Shared data root is resolved via `src/paths.ts`.
 - All workout saves target `suc-shared-data/workouts/workouts.master.json`.
+- Season Builder publishes canonical training data via a bridge layer (see `docs/canonical-bridge.md`).
 
 ## SUC-Workout
 See the SUC-Workout timeline builder overview in `docs/SUC-WORKOUT.md`.

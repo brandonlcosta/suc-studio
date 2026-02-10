@@ -1,4 +1,12 @@
-type Screen = "routes" | "events" | "workouts" | "season" | "roster" | "challenges";
+type Screen =
+  | "routes"
+  | "events"
+  | "workouts"
+  | "season"
+  | "roster"
+  | "challenges"
+  | "tips"
+  | "route-intel";
 
 interface NavigationBarProps {
   activeScreen: Screen;
@@ -13,6 +21,8 @@ export default function NavigationBar({ activeScreen, onNavigate }: NavigationBa
     { id: "routes", label: "Route Manager" },
     { id: "events", label: "Event Builder" },
     { id: "workouts", label: "Workout Builder" },
+    { id: "route-intel", label: "Route Intel" },
+    { id: "tips", label: "Tips" },
   ];
 
   return (

@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { SEASON_DRAFT_PATH, SEASON_PUBLISHED_PATH, SEASONS_ROOT } from "../utils/paths.js";
 import type { BlockInstance, Season, WeekInstance } from "./types.js";
 import { assertSeasonForSave } from "./validation.js";
+import { publishCanonicalTrainingData } from "./canonicalBridge.js";
 
 const JSON_INDENT = 2;
 
@@ -138,6 +139,9 @@ export async function publishDraftSeason(): Promise<Season> {
   };
 
   assertSeasonForSave(published, "published");
+
+  await publishCanonicalTrainingData(published);
+
   await writeJsonFileAtomic(SEASON_PUBLISHED_PATH, published);
   console.log("[Publish] Writing canonical data to:", SEASONS_ROOT);
   console.log("[Publish] Published season file:", SEASON_PUBLISHED_PATH);

@@ -34,6 +34,7 @@ const WEEK_FOCUS_LABELS: WeekFocus[] = [
 
 const SEASON_STATUSES: SeasonStatus[] = ["draft", "published"];
 const DAY_KEYS: DayKey[] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+const EVENT_ROLE_LABELS = ["goal", "tuneup", "simulation", "social"] as const;
 
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) {
@@ -67,6 +68,13 @@ function assertDayAssignment(value: unknown, path: string): asserts value is Day
   if (assignment.workoutId !== undefined) {
     assertNonEmptyString(assignment.workoutId, `${path}.workoutId`);
   }
+  if (assignment.workoutIds !== undefined) {
+    assertDenseArray(assignment.workoutIds, `${path}.workoutIds`);
+    assert(assignment.workoutIds.length <= 2, `${path}.workoutIds must have at most 2 entries.`);
+    for (let i = 0; i < assignment.workoutIds.length; i += 1) {
+      assertNonEmptyString(assignment.workoutIds[i], `${path}.workoutIds[${i}]`);
+    }
+  }
   if (assignment.notes !== undefined) {
     assert(typeof assignment.notes === "string", `${path}.notes must be a string.`);
   }
@@ -91,6 +99,19 @@ function assertWeekInstance(value: unknown, path: string): asserts value is Week
   assertIntensityLabel(week.intensity, `${path}.intensity`);
   if (week.days !== undefined) {
     assertWeekDays(week.days, `${path}.days`);
+  }
+  if (week.eventIds !== undefined) {
+    assertDenseArray(week.eventIds, `${path}.eventIds`);
+    for (let i = 0; i < week.eventIds.length; i += 1) {
+      assertNonEmptyString(week.eventIds[i], `${path}.eventIds[${i}]`);
+    }
+  }
+  if (week.eventRoles !== undefined) {
+    assert(typeof week.eventRoles === "object" && week.eventRoles !== null, `${path}.eventRoles must be an object.`);
+    for (const [eventId, role] of Object.entries(week.eventRoles)) {
+      assertNonEmptyString(eventId, `${path}.eventRoles key`);
+      assert(EVENT_ROLE_LABELS.includes(role as (typeof EVENT_ROLE_LABELS)[number]), `${path}.eventRoles.${eventId} must be a valid role.`);
+    }
   }
 }
 

@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Route Intel",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "eventId",
+    "routes",
+    "visibility",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "type": { "const": "route-intel" },
+    "eventId": { "type": "string" },
+    "routes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["routeId", "distanceVariantIds"],
+        "properties": {
+          "routeId": { "type": "string" },
+          "distanceVariantIds": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "sectionMode": {
+            "type": "string",
+            "enum": ["race", "all-poi"],
+            "default": "all-poi"
+          },
+          "enabledPoiIds": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Explicit list of POI ids included as section boundaries. If omitted, derive from sectionMode."
+          }
+        }
+      }
+    },
+    "visibility": { "enum": ["public", "private"] },
+    "publish": { "type": "boolean", "default": true },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

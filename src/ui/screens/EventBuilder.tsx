@@ -77,6 +77,7 @@ export default function EventBuilder() {
       eventDescription: "",
       eventDate: "",
       eventTime: "",
+      type: "training-run",
       startLocationName: "",
       startLocationUrl: "",
       startLocationCoordinates: { lat: 0, lng: 0 },
@@ -89,7 +90,7 @@ export default function EventBuilder() {
   }, []);
 
   const handleEdit = useCallback((event: Event) => {
-    setEditingEvent({ ...event });
+    setEditingEvent({ ...event, type: event.type ?? "training-run" });
     setIsCreating(false);
     setError(null);
     setSuccess(null);
@@ -103,13 +104,18 @@ export default function EventBuilder() {
       return;
     }
 
+    const normalizedEvent: Event = {
+      ...editingEvent,
+      type: editingEvent.type ?? "training-run",
+    };
+
     if (isCreating) {
       // Add new event
-      setEvents((prev) => [...prev, editingEvent]);
+      setEvents((prev) => [...prev, normalizedEvent]);
     } else {
       // Update existing event
       setEvents((prev) =>
-        prev.map((e) => (e.eventId === editingEvent.eventId ? editingEvent : e))
+        prev.map((e) => (e.eventId === editingEvent.eventId ? normalizedEvent : e))
       );
     }
 
@@ -243,6 +249,32 @@ export default function EventBuilder() {
               }}
               placeholder="Sacramento Underground Cycling"
             />
+          </div>
+
+          <div style={{ display: "grid", gap: "0.5rem" }}>
+            <label style={{ fontSize: "0.85rem", color: "#999999" }}>Event Type</label>
+            <select
+              value={editingEvent.type ?? "training-run"}
+              onChange={(e) =>
+                setEditingEvent({
+                  ...editingEvent,
+                  type: e.target.value as Event["type"],
+                })
+              }
+              style={{
+                padding: "0.5rem",
+                border: "1px solid #2b2b2b",
+                borderRadius: "4px",
+                backgroundColor: "#0b0b0b",
+                color: "#f5f5f5",
+              }}
+            >
+              <option value="crew-run">Crew Run</option>
+              <option value="training-run">Training Run</option>
+              <option value="race">Race</option>
+              <option value="camp">Camp</option>
+              <option value="social">Social</option>
+            </select>
           </div>
 
           <div style={{ display: "grid", gap: "0.5rem" }}>
@@ -493,6 +525,9 @@ export default function EventBuilder() {
                     </div>
                     <div style={{ fontSize: "0.875rem", color: "#bfbfbf", marginTop: "0.25rem" }}>
                       {event.eventDescription}
+                    </div>
+                    <div style={{ fontSize: "0.8rem", color: "#9ca3af", marginTop: "0.35rem" }}>
+                      Type: {(event.type ?? "training-run").replace("-", " ")}
                     </div>
                     {event.eventDate && (
                       <div style={{ fontSize: "0.875rem", color: "#999999", marginTop: "0.25rem" }}>
