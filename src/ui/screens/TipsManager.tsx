@@ -241,6 +241,14 @@ export default function TipsManager() {
     return item.id;
   };
 
+  const handleExportMedia = (item: ContentItem) => {
+    // Deep link to Broadcast Composer with training tip preloaded
+    const broadcastUrl = import.meta.env.VITE_BROADCAST_URL || "http://localhost:5175";
+    const exportUrl = `${broadcastUrl}/api/media/training-tip/${item.id}/carousel`;
+    // Trigger download directly
+    window.open(exportUrl, "_blank");
+  };
+
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
       {/* Left Sidebar */}
@@ -354,6 +362,27 @@ export default function TipsManager() {
                     {item.topics?.join(" > ")} - {item.status === "draft" ? "Draft" : "Published"}
                   </div>
                 </button>
+                {/* Export Media button for published training tips */}
+                {item.contentType === "training-tip" && item.status === "published" && (
+                  <button
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleExportMedia(item);
+                    }}
+                    title="Export carousel slides"
+                    style={{
+                      padding: "0 0.5rem",
+                      backgroundColor: "transparent",
+                      color: "var(--primary)",
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: "0.7rem",
+                      fontWeight: "600",
+                    }}
+                  >
+                    Export
+                  </button>
+                )}
                 {config.deletePath && (
                   <button
                     onClick={(event) => {

@@ -18,6 +18,7 @@ import footwearReviewsRouter from "./api/footwearReviews.js";
 import gearReviewsRouter from "./api/gearReviews.js";
 import raceRecapsRouter from "./api/raceRecaps.js";
 import crewRunRecapsRouter from "./api/crewRunRecaps.js";
+import draftsRouter from "./api/drafts.js";
 import { SHARED_DATA_ROOT } from "./utils/paths.js";
 
 const app = express();
@@ -62,6 +63,7 @@ app.use("/api/footwear-reviews", footwearReviewsRouter);
 app.use("/api/gear-reviews", gearReviewsRouter);
 app.use("/api/race-recaps", raceRecapsRouter);
 app.use("/api/crew-run-recaps", crewRunRecapsRouter);
+app.use("/api/drafts", draftsRouter);
 
 // Health check
 app.get("/api/health", (_req, res) => {
@@ -87,6 +89,7 @@ app.get("/api/health", (_req, res) => {
       "/api/gear-reviews",
       "/api/race-recaps",
       "/api/crew-run-recaps",
+      "/api/drafts",
     ],
   });
 });

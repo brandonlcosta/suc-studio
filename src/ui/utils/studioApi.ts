@@ -1,3 +1,5 @@
+import { apiUrl } from "../lib/api";
+
 const STUDIO_API_BASE = "/api";
 
 export function buildStudioApiUrl(path: string): string {
@@ -7,9 +9,14 @@ export function buildStudioApiUrl(path: string): string {
   if (!path.startsWith("/")) {
     throw new Error("[STUDIO] buildStudioApiUrl expects a leading slash, e.g. /routes.");
   }
-  const fullPath = `${STUDIO_API_BASE}${path}`;
-  if (fullPath.startsWith("/api/render") || fullPath.startsWith("/api/compile") || fullPath.startsWith("/api/preview")) {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const fullPath = `${STUDIO_API_BASE}${normalizedPath}`;
+  if (
+    fullPath.startsWith("/api/render") ||
+    fullPath.startsWith("/api/compile") ||
+    fullPath.startsWith("/api/preview")
+  ) {
     throw new Error("[STUDIO] Broadcast actions are no longer supported in Studio.");
   }
-  return fullPath;
+  return apiUrl(normalizedPath);
 }

@@ -11,6 +11,16 @@ import ChallengeBuilder from "./screens/ChallengeBuilder";
 import TipsManager from "./screens/TipsManager";
 import RouteIntelBuilder from "./screens/RouteIntelBuilder/RouteIntelBuilder";
 
+// Desktop screens
+import DraftInbox from "./screens/DraftInbox";
+
+// Mobile components
+import MobileLayout from "./mobile/MobileLayout";
+import MobileHome from "./mobile/MobileHome";
+import MobileTrainingTipForm from "./mobile/MobileTrainingTipForm";
+import MobileRouteIntelForm from "./mobile/MobileRouteIntelForm";
+import MobileDraftsList from "./mobile/MobileDraftsList";
+
 console.log("[STUDIO] VITE_API_BASE =", import.meta.env.VITE_API_BASE);
 
 // Global styles
@@ -92,6 +102,9 @@ function StudioNav() {
       <NavLink to="/tips" style={linkStyle}>
         Tips
       </NavLink>
+      <NavLink to="/drafts" style={linkStyle}>
+        Drafts
+      </NavLink>
     </nav>
   );
 }
@@ -121,6 +134,17 @@ function AppShell() {
         <Route path="/studio/challenges" element={<ChallengeBuilder />} />
         <Route path="/studio/route-intel" element={<RouteIntelBuilder />} />
         <Route path="/tips" element={<TipsManager />} />
+        <Route path="/drafts" element={<DraftInbox />} />
+
+        {/* Mobile routes */}
+        <Route path="/mobile" element={<MobileLayout />}>
+          <Route index element={<MobileHome />} />
+          <Route path="training-tip" element={<MobileTrainingTipForm />} />
+          <Route path="training-tip/:id" element={<MobileTrainingTipForm />} />
+          <Route path="route-intel" element={<MobileRouteIntelForm />} />
+          <Route path="route-intel/:id" element={<MobileRouteIntelForm />} />
+          <Route path="drafts" element={<MobileDraftsList />} />
+        </Route>
       </Routes>
     </>
   );

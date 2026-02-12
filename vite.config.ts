@@ -1,4 +1,4 @@
-﻿import { defineConfig, type Plugin } from "vite";
+﻿import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -17,11 +17,17 @@ const startupLog = (label: string, port: number): Plugin => ({
   },
 });
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+
+  return {
   base: "/",
   plugins: [react(), startupLog("SUC-STUDIO", 5173)],
   root: path.resolve(__dirname, "src/ui"),
   publicDir: path.resolve(__dirname, "public"),
+  define: {
+    __APP_ENV__: env.APP_ENV,
+  },
   build: {
     outDir: path.resolve(__dirname, "dist"),
     emptyOutDir: true,
@@ -43,4 +49,5 @@ export default defineConfig({
       },
     },
   },
+  };
 });

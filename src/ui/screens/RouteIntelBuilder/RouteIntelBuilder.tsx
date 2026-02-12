@@ -354,6 +354,17 @@ export default function RouteIntelBuilder() {
     if (activeRouteIndex == null) return;
     updateRoute(activeRouteIndex, { enabledPoiIds: undefined });
   }, [activeRouteIndex, updateRoute]);
+
+  const handleExportMedia = useCallback((item: RouteIntelDoc) => {
+    const firstRoute = item.routes[0];
+    if (!firstRoute?.routeId) {
+      setError("Cannot export: No route configured for this Route Intel.");
+      return;
+    }
+    const broadcastUrl = import.meta.env.VITE_BROADCAST_URL || "http://localhost:5175";
+    const exportUrl = `${broadcastUrl}/api/media/route-intel/${item.id}/${firstRoute.routeId}/carousel`;
+    window.open(exportUrl, "_blank");
+  }, []);
   if (isLoading) {
     return (
       <div style={{ padding: "2rem", backgroundColor: "#0a0e14", minHeight: "100%" }}>
@@ -460,6 +471,23 @@ export default function RouteIntelBuilder() {
                     >
                       Edit
                     </button>
+                    {item.publish !== false && item.routes.length > 0 && (
+                      <button
+                        onClick={() => handleExportMedia(item)}
+                        title="Export carousel slides"
+                        style={{
+                          padding: "0.45rem 0.8rem",
+                          borderRadius: "4px",
+                          border: "1px solid #60a5fa",
+                          backgroundColor: "#111111",
+                          color: "#60a5fa",
+                          cursor: "pointer",
+                          fontSize: "0.8rem",
+                        }}
+                      >
+                        Export
+                      </button>
+                    )}
                     <button
                       onClick={() => handleDelete(item.id)}
                       style={{
