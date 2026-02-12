@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SUC Gear Review",
+  "description": "General gear review for packs, poles, hydration, apparel, etc.",
+  "type": "object",
+  "required": ["id", "name", "gearType", "topics", "tier", "author", "publishedAt"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "brand": { "type": "string" },
+    "gearType": {
+      "type": "string",
+      "enum": ["pack", "vest", "poles", "headlamp", "hydration", "apparel", "watch", "nutrition", "accessories"]
+    },
+    "useCase": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["racing", "training", "daily", "ultras", "fastpacking"]
+      }
+    },
+    "pros": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "cons": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "verdict": { "type": "string", "minLength": 1 },
+    "rating": { "type": "number", "minimum": 1, "maximum": 5 },
+    "body": { "type": "string" },
+    "topics": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "maxItems": 3
+    },
+    "tier": { "type": "string", "enum": ["team", "public"] },
+    "author": { "type": "string", "minLength": 1 },
+    "publishedAt": { "type": "string", "format": "date-time" },
+    "status": { "type": "string", "enum": ["draft", "published"] },
+    "photos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string" },
+          "caption": { "type": "string" }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}
+

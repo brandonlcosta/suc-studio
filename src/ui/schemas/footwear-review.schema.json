@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SUC Footwear Review",
+  "description": "Structured footwear review with specific attributes.",
+  "type": "object",
+  "required": ["id", "brand", "model", "category", "topics", "tier", "author", "publishedAt"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "brand": { "type": "string", "minLength": 1 },
+    "model": { "type": "string", "minLength": 1 },
+    "category": {
+      "type": "string",
+      "enum": ["trail", "road", "ultra", "recovery", "racing"]
+    },
+    "useCase": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["racing", "training", "daily", "long-runs", "speed-work"]
+      }
+    },
+    "terrain": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["rocky", "muddy", "mixed", "smooth", "technical"]
+      }
+    },
+    "fit": {
+      "type": "string",
+      "enum": ["narrow", "medium", "wide"]
+    },
+    "cushioning": {
+      "type": "string",
+      "enum": ["minimal", "low", "medium", "high", "maximal"]
+    },
+    "stability": {
+      "type": "string",
+      "enum": ["neutral", "support", "motion-control"]
+    },
+    "drop": { "type": "number" },
+    "stackHeight": { "type": "number" },
+    "weight": { "type": "number", "description": "Weight in ounces" },
+    "pros": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "cons": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "verdict": { "type": "string", "minLength": 1 },
+    "rating": { "type": "number", "minimum": 1, "maximum": 5 },
+    "body": { "type": "string" },
+    "topics": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "Must be ['gear', 'footwear']"
+    },
+    "tier": { "type": "string", "enum": ["team", "public"] },
+    "author": { "type": "string", "minLength": 1 },
+    "publishedAt": { "type": "string", "format": "date-time" },
+    "status": { "type": "string", "enum": ["draft", "published"] },
+    "photos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string" },
+          "caption": { "type": "string" }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

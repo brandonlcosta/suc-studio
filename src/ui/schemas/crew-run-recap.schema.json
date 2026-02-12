@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SUC Crew Run Recap",
+  "description": "Weekend SUC crew run recap.",
+  "type": "object",
+  "required": ["id", "eventName", "eventDate", "topics", "tier", "author", "publishedAt"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "eventName": { "type": "string", "minLength": 1 },
+    "eventDate": { "type": "string", "format": "date" },
+    "routeId": { "type": "string" },
+    "routeName": { "type": "string" },
+    "distance": { "type": "string" },
+    "vert": { "type": "string" },
+    "conditions": { "type": "string" },
+    "highlights": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "crewShoutouts": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "body": { "type": "string" },
+    "topics": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "maxItems": 3,
+      "description": "Typically ['crew', 'weekend-runs']"
+    },
+    "tier": { "type": "string", "enum": ["team", "public"] },
+    "author": { "type": "string", "minLength": 1 },
+    "publishedAt": { "type": "string", "format": "date-time" },
+    "status": { "type": "string", "enum": ["draft", "published"] },
+    "photos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string" },
+          "caption": { "type": "string" }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

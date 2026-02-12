@@ -1,12 +1,12 @@
 import Ajv, { type ErrorObject, type ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
 
-import trainingContentSchema from "../../../../suc-shared-data/schemas/training-content.schema.json";
-import footwearReviewSchema from "../../../../suc-shared-data/schemas/footwear-review.schema.json";
-import gearReviewSchema from "../../../../suc-shared-data/schemas/gear-review.schema.json";
-import raceRecapSchema from "../../../../suc-shared-data/schemas/race-recap.schema.json";
-import crewRunRecapSchema from "../../../../suc-shared-data/schemas/crew-run-recap.schema.json";
-import routeIntelSchema from "../../../schemas/route-intel.schema.json";
+import trainingContentSchema from "../schemas/training-content.schema.json";
+import footwearReviewSchema from "../schemas/footwear-review.schema.json";
+import gearReviewSchema from "../schemas/gear-review.schema.json";
+import raceRecapSchema from "../schemas/race-recap.schema.json";
+import crewRunRecapSchema from "../schemas/crew-run-recap.schema.json";
+import routeIntelSchema from "../schemas/route-intel.schema.json";
 
 export type ValidationError = { field: string; message: string };
 export type ValidationResult = { ok: true } | { ok: false; errors: ValidationError[] };

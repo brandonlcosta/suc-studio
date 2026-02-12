@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SUC Race Recap",
+  "description": "Race recap with strategy, lessons, and outcomes.",
+  "type": "object",
+  "required": ["id", "raceName", "distance", "topics", "tier", "author", "publishedAt"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "raceName": { "type": "string", "minLength": 1 },
+    "raceDate": { "type": "string", "format": "date" },
+    "distance": { "type": "string", "minLength": 1 },
+    "vert": { "type": "string" },
+    "conditions": { "type": "string" },
+    "strategySummary": { "type": "string" },
+    "whatWorked": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "whatDidnt": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "lessons": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "result": { "type": "string" },
+    "finishTime": { "type": "string" },
+    "placement": { "type": "string" },
+    "body": { "type": "string" },
+    "topics": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "maxItems": 3,
+      "description": "Typically ['strategy', 'race-recaps'] or ['strategy', 'race-recaps', '<race-type>']"
+    },
+    "tier": { "type": "string", "enum": ["team", "public"] },
+    "author": { "type": "string", "minLength": 1 },
+    "publishedAt": { "type": "string", "format": "date-time" },
+    "status": { "type": "string", "enum": ["draft", "published"] },
+    "photos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string" },
+          "caption": { "type": "string" }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}
