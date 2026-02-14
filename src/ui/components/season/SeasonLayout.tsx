@@ -73,6 +73,21 @@ function addDays(date: Date, days: number): Date {
   return next;
 }
 
+function parseIsoLocalDate(value?: string | null): Date | null {
+  if (!value) return null;
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const parsed = new Date(year, monthIndex, day);
+  parsed.setHours(0, 0, 0, 0);
+  if (parsed.getFullYear() !== year || parsed.getMonth() !== monthIndex || parsed.getDate() !== day) {
+    return null;
+  }
+  return parsed;
+}
+
 function isWeekMatchingPreset(week: WeekInstance, preset: WeekPreset): boolean {
   return (
     week.focus === preset.focus &&
@@ -173,7 +188,13 @@ export default function SeasonLayout() {
     loadWorkouts();
   }, []);
 
-  const anchorMonday = useMemo(() => startOfWeekMonday(new Date()), []);
+  const anchorMonday = useMemo(() => {
+    const seasonStart = parseIsoLocalDate(season?.startDate ?? null);
+    if (seasonStart) {
+      return startOfWeekMonday(seasonStart);
+    }
+    return startOfWeekMonday(new Date());
+  }, [season?.seasonId, season?.startDate]);
 
   const startMarkerIndex = useMemo(() => {
     if (!season) return 0;
