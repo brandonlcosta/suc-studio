@@ -7,6 +7,7 @@ import type {
   RouteLabel,
   WorkoutsMaster,
   RouteIntelDoc,
+  RouteMediaDoc,
 } from "../types";
 import { buildStudioApiUrl } from "./studioApi";
 
@@ -453,5 +454,63 @@ export async function deleteRouteIntel(id: string): Promise<void> {
 
   if (!response.ok) {
     await handleError(response, "Failed to delete route intel");
+  }
+}
+
+/**
+ * List route media plans.
+ */
+export async function listRouteMedia(): Promise<RouteMediaDoc[]> {
+  const response = await fetch(buildStudioApiUrl("/route-media"));
+
+  if (!response.ok) {
+    await handleError(response, "Failed to load route media");
+  }
+
+  const data = await parseJsonResponse<{ items: RouteMediaDoc[] }>(
+    response,
+    "Load route media"
+  );
+  return data.items || [];
+}
+
+/**
+ * Load a single route media plan.
+ */
+export async function getRouteMedia(id: string): Promise<RouteMediaDoc> {
+  const response = await fetch(buildStudioApiUrl(`/route-media/${id}`));
+
+  if (!response.ok) {
+    await handleError(response, "Failed to load route media");
+  }
+
+  return parseJsonResponse(response, "Load route media");
+}
+
+/**
+ * Load canonical route-media schema from shared-data (via studio API).
+ */
+export async function getRouteMediaSchema(): Promise<unknown> {
+  const response = await fetch(buildStudioApiUrl("/route-media/schema"));
+
+  if (!response.ok) {
+    await handleError(response, "Failed to load route media schema");
+  }
+
+  return parseJsonResponse(response, "Load route media schema");
+}
+
+/**
+ * Save (publish) a route media document.
+ */
+export async function saveRouteMedia(doc: RouteMediaDoc): Promise<void> {
+  const response = await fetch(buildStudioApiUrl("/route-media"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(doc, null, 2),
+  });
+
+  if (!response.ok) {
+    await handleError(response, "Failed to save route media");
   }
 }

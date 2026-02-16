@@ -9,7 +9,7 @@
     "dev": "concurrently --kill-others-on-fail --names \"UI,API\" \"npm run dev:ui\" \"npm run dev:api\"",
     "build": "vite build",
     "probe": "tsx src/index.ts",
-    "test": "tsx src/workoutPreview.test.ts"
+    "test": "tsx src/workoutPreview.test.ts && tsx src/ui/routeMediaRoute.test.tsx && tsx src/ui/utils/routeMediaTimelineGuardrails.test.ts && tsx src/server/utils/routeMediaSerialization.test.ts && tsx src/ui/screens/RouteMediaBuilder/previewIsolation.test.ts && tsx src/ui/screens/RouteMediaBuilder/timelineElevation.downsample.test.ts && tsx src/ui/screens/RouteMediaBuilder/timelineElevation.snapAnchors.test.ts && tsx src/ui/screens/RouteMediaBuilder/timelineElevation.timelineIntegrity.test.ts && tsx src/ui/screens/RouteMediaBuilder/timelineLanes.test.ts && tsx src/ui/screens/RouteMediaBuilder/timelineEditing.test.ts && tsx src/ui/screens/RouteMediaBuilder/timelineKeyboard.test.ts && tsx src/ui/screens/RouteMediaBuilder/previewEngine.progressMapping.test.ts && tsx src/ui/screens/RouteMediaBuilder/previewEngine.camera.test.ts && tsx src/ui/screens/RouteMediaBuilder/previewEngine.overlay.test.ts && tsx src/ui/screens/RouteMediaBuilder/previewPlaybackState.test.ts && tsx src/ui/screens/RouteMediaBuilder/previewEngine.immutability.test.ts && tsx src/ui/screens/RouteMediaBuilder/previewEngine.performance.test.ts && tsx src/ui/screens/RouteMediaBuilder/overlayMapping.test.ts && tsx src/ui/screens/RouteMediaBuilder/overlayDraftOps.test.ts"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

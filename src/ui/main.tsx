@@ -10,6 +10,7 @@ import RosterBuilder from "./screens/RosterBuilder";
 import ChallengeBuilder from "./screens/ChallengeBuilder";
 import TipsManager from "./screens/TipsManager";
 import RouteIntelBuilder from "./screens/RouteIntelBuilder/RouteIntelBuilder";
+import RouteMediaBuilder from "./screens/RouteMediaBuilder/RouteMediaBuilder";
 
 // Desktop screens
 import DraftInbox from "./screens/DraftInbox";
@@ -99,6 +100,9 @@ function StudioNav() {
       <NavLink to="/studio/route-intel" style={linkStyle}>
         Route Intel
       </NavLink>
+      <NavLink to="/route-media" style={linkStyle}>
+        Cinematic
+      </NavLink>
       <NavLink to="/tips" style={linkStyle}>
         Tips
       </NavLink>
@@ -133,6 +137,8 @@ function AppShell() {
         <Route path="/studio/roster" element={<RosterBuilder />} />
         <Route path="/studio/challenges" element={<ChallengeBuilder />} />
         <Route path="/studio/route-intel" element={<RouteIntelBuilder />} />
+        <Route path="/route-media" element={<RouteMediaBuilder />} />
+        <Route path="/studio/route-media" element={<RouteMediaBuilder />} />
         <Route path="/tips" element={<TipsManager />} />
         <Route path="/drafts" element={<DraftInbox />} />
 

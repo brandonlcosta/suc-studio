@@ -182,3 +182,71 @@ export interface RouteIntelDoc {
   createdAt: string;
   updatedAt: string;
 }
+
+// Route Media types
+export type RouteMediaOutputFormat = "story" | "square" | "landscape";
+export type RouteMediaCameraMode = "third-person-follow" | "overview-lock";
+
+export interface RouteMediaPlayback {
+  milesPerSecond: number;
+  fps: number;
+  holdSeconds: number;
+  outputFormat: RouteMediaOutputFormat;
+}
+
+export interface RouteMediaCameraDefaults {
+  mode: RouteMediaCameraMode;
+  followDistanceMeters?: number;
+  altitudeMeters?: number;
+  pitchDeg?: number;
+  headingOffsetDeg?: number;
+}
+
+export interface RouteMediaTimelineEntry {
+  id: string;
+  startMi: number;
+  endMi: number;
+  cameraMode: RouteMediaCameraMode;
+  speedMiPerSec?: number;
+  title?: string;
+  subtitleIds?: string[];
+  markerIds?: string[];
+}
+
+export interface RouteMediaSubtitle {
+  id: string;
+  startSec: number;
+  endSec: number;
+  text: string;
+  position?: "top" | "bottom";
+}
+
+export interface RouteMediaMarker {
+  id: string;
+  atMi: number;
+  type: "poi" | "title" | "subtitle" | "custom";
+  title: string;
+  body?: string;
+  poiId?: string;
+}
+
+export interface RouteMediaDoc {
+  id: string;
+  type: "route-media";
+  schemaVersion: "1.0.0" | string;
+  eventId: string;
+  routeId: string;
+  distanceVariantId?: string;
+  title?: string;
+  description?: string;
+  playback: RouteMediaPlayback;
+  camera: RouteMediaCameraDefaults;
+  timeline: RouteMediaTimelineEntry[];
+  subtitles: RouteMediaSubtitle[];
+  markers: RouteMediaMarker[];
+  visibility: "public" | "private";
+  publish?: boolean;
+  status?: "active" | "archived" | "deprecated";
+  createdAt: string;
+  updatedAt: string;
+}

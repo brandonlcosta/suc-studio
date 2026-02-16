@@ -19,6 +19,7 @@ import useRouteContext from "../../hooks/useRouteContext";
 import RouteMapPreview from "../../components/route-context/RouteMapPreview";
 import RouteElevationPreview from "../../components/route-context/RouteElevationPreview";
 import type { RoutePoiMarker } from "../../components/route-context/routeContextTypes";
+import { buildRouteOverlayModel } from "../../../../../suc-shared-data/src/route-overlay-primitives.js";
 
 const createEmptyRoute = (): RouteIntelRoute => ({
   routeId: "",
@@ -315,6 +316,14 @@ export default function RouteIntelBuilder() {
   const allPois = useMemo<RoutePoiMarker[]>(() => {
     return Array.isArray(routeContext.pois) ? routeContext.pois : [];
   }, [routeContext.pois]);
+
+  const overlayModel = useMemo(
+    () =>
+      buildRouteOverlayModel(routeContext.track, allPois, {
+        routeId: activeRoute?.routeId || "",
+      }),
+    [routeContext.track, allPois, activeRoute?.routeId]
+  );
 
   const enabledPoiIds = useMemo(() => {
     if (Array.isArray(activeRoute?.enabledPoiIds)) {
@@ -847,14 +856,12 @@ export default function RouteIntelBuilder() {
               </div>
               <div style={{ display: "grid", gap: "10px" }}>
                 <RouteMapPreview
-                  track={routeContext.track}
-                  pois={allPois}
+                  overlay={overlayModel}
                   highlightedRange={null}
                   sectionAnchorPoiIds={Array.from(boundaryPoiIds)}
                 />
                 <RouteElevationPreview
-                  track={routeContext.track}
-                  poiMarkers={allPois}
+                  overlay={overlayModel}
                   highlightedRange={null}
                   sectionAnchorPoiIds={Array.from(boundaryPoiIds)}
                 />
@@ -1031,5 +1038,4 @@ export default function RouteIntelBuilder() {
     </div>
   );
 }
-
 

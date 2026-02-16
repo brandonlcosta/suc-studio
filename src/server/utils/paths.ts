@@ -13,10 +13,12 @@ export const STUDIO_DATA_ROOT = path.join(SHARED_DATA_ROOT, "data");
 export const SEASONS_ROOT = path.join(SHARED_DATA_ROOT, "seasons");
 export const TRAINING_CONTENT_ROOT = path.join(SHARED_DATA_ROOT, "training-content");
 export const ROUTE_INTEL_ROOT = path.join(SHARED_DATA_ROOT, "route-intel");
+export const ROUTE_MEDIA_ROOT = path.join(SHARED_DATA_ROOT, "route-media");
 export const FOOTWEAR_REVIEWS_ROOT = path.join(SHARED_DATA_ROOT, "footwear-reviews");
 export const GEAR_REVIEWS_ROOT = path.join(SHARED_DATA_ROOT, "gear-reviews");
 export const RACE_RECAPS_ROOT = path.join(SHARED_DATA_ROOT, "race-recaps");
 export const CREW_RUN_RECAPS_ROOT = path.join(SHARED_DATA_ROOT, "crew-run-recaps");
+export const ROUTE_MEDIA_SCHEMA_PATH = path.join(SHARED_DATA_ROOT, "schemas", "route-media.schema.json");
 
 // Draft directories (mobile capture → desktop approval workflow)
 export const DRAFTS_ROOT = path.join(SHARED_DATA_ROOT, "drafts");

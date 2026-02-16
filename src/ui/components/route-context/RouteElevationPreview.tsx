@@ -1,23 +1,25 @@
 import { useMemo } from "react";
-import type { HighlightRange, RoutePoiMarker, TrackPoint } from "./routeContextTypes";
+import type { RouteOverlayModel } from "../../../../../suc-shared-data/src/route-overlay-primitives";
+import type { HighlightRange } from "./routeContextTypes";
 import { normalizeHighlightRange } from "./routeContextUtils";
 import { getPoiIconMarkup } from "./poiIcons";
 
 interface RouteElevationPreviewProps {
-  track: TrackPoint[];
-  poiMarkers: RoutePoiMarker[];
+  overlay: RouteOverlayModel;
   highlightedRange: HighlightRange | null;
   height?: number;
   sectionAnchorPoiIds?: string[];
 }
 
 export default function RouteElevationPreview({
-  track,
-  poiMarkers,
+  overlay,
   highlightedRange,
   height = 120,
   sectionAnchorPoiIds = [],
 }: RouteElevationPreviewProps) {
+  const track = overlay.track || [];
+  const poiMarkers = overlay.pois || [];
+  const elevationFeet = overlay.elevation?.elevationFeet || [];
   const normalizedRange = useMemo(
     () => normalizeHighlightRange(highlightedRange, track.length),
     [highlightedRange, track.length]
@@ -25,10 +27,10 @@ export default function RouteElevationPreview({
   const anchorSet = useMemo(() => new Set(sectionAnchorPoiIds), [sectionAnchorPoiIds]);
 
   const elevationMetrics = useMemo(() => {
-    if (track.length === 0) {
+    if (track.length === 0 || elevationFeet.length === 0) {
       return { points: "", min: 0, max: 1, span: 1, elevations: [] as Array<number | null> };
     }
-    const elevations = track.map((point) => (Number.isFinite(point.ele) ? Number(point.ele) : null));
+    const elevations = elevationFeet.map((value) => (Number.isFinite(value) ? Number(value) : null));
     const numeric = elevations.filter((value): value is number => value != null);
     const hasElevation = numeric.length > 0;
     const min = hasElevation ? Math.min(...numeric) : 0;

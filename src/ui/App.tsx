@@ -8,6 +8,7 @@ import RosterBuilder from "./screens/RosterBuilder";
 import ChallengeBuilder from "./screens/ChallengeBuilder";
 import TipsManager from "./screens/TipsManager";
 import RouteIntelBuilder from "./screens/RouteIntelBuilder/RouteIntelBuilder";
+import RouteMediaBuilder from "./screens/RouteMediaBuilder/RouteMediaBuilder";
 
 type Screen =
   | "routes"
@@ -17,7 +18,8 @@ type Screen =
   | "roster"
   | "challenges"
   | "tips"
-  | "route-intel";
+  | "route-intel"
+  | "route-media";
 
 export default function App() {
   const [activeScreen, setActiveScreen] = useState<Screen>("season");
@@ -34,6 +36,7 @@ export default function App() {
       {activeScreen === "challenges" && <ChallengeBuilder />}
       {activeScreen === "tips" && <TipsManager />}
       {activeScreen === "route-intel" && <RouteIntelBuilder />}
+      {activeScreen === "route-media" && <RouteMediaBuilder />}
     </div>
   );
 }

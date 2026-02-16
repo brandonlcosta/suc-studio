@@ -58,6 +58,7 @@ type BasemapStyle = "clean" | "topo";
 
 type MapClickPayload = {
   click: { lat: number; lon: number };
+  screen?: { x: number; y: number };
   snap?: {
     lat: number;
     lon: number;
@@ -73,6 +74,9 @@ type FocusTarget = {
   lat: number;
   lon: number;
   zoom?: number;
+  bearing?: number;
+  pitch?: number;
+  immediate?: boolean;
   id?: string;
 };
 
@@ -127,11 +131,13 @@ interface SimpleRouteMapProps {
   height?: number | string;
   minHeight?: number | string;
   onMapClick?: (payload: MapClickPayload) => void;
+  onMapContextMenu?: (payload: MapClickPayload) => void;
   onRouteData?: (variant: RouteLabel, stats: RouteStats, route: ParsedRoute) => void;
   focusTarget?: FocusTarget | null;
   highlightedPoiId?: string | null;
   snapIndicator?: { lat: number; lon: number } | null;
   onPoiSelect?: (poiId: string) => void;
+  onPoiHover?: (poiId: string | null) => void;
   onPoiDragEnd?: (poiId: string, position: { lat: number; lon: number }) => void;
 }
 
@@ -270,11 +276,13 @@ export default function SimpleRouteMap({
   height,
   minHeight,
   onMapClick,
+  onMapContextMenu,
   onRouteData,
   focusTarget,
   highlightedPoiId,
   snapIndicator,
   onPoiSelect,
+  onPoiHover,
   onPoiDragEnd,
 }: SimpleRouteMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -292,6 +300,7 @@ export default function SimpleRouteMap({
     basemap === "topo" ? TOPO_STYLE_URL : DEMO_STYLE_URL
   );
   const onPoiSelectRef = useRef<typeof onPoiSelect>(onPoiSelect);
+  const onPoiHoverRef = useRef<typeof onPoiHover>(onPoiHover);
   const onPoiDragEndRef = useRef<typeof onPoiDragEnd>(onPoiDragEnd);
   const onRouteDataRef = useRef<typeof onRouteData>(onRouteData);
   const draggingMarkerKeyRef = useRef<string | null>(null);
@@ -304,6 +313,10 @@ export default function SimpleRouteMap({
   useEffect(() => {
     onPoiSelectRef.current = onPoiSelect;
   }, [onPoiSelect]);
+
+  useEffect(() => {
+    onPoiHoverRef.current = onPoiHover;
+  }, [onPoiHover]);
 
   useEffect(() => {
     onPoiDragEndRef.current = onPoiDragEnd;
@@ -399,6 +412,7 @@ export default function SimpleRouteMap({
     const handler = (event: any) => {
       if (!onMapClick) return;
       const click = { lat: event.lngLat.lat, lon: event.lngLat.lng };
+      const screen = event.point ? { x: event.point.x, y: event.point.y } : undefined;
       let snap: MapClickPayload["snap"];
       const normalizedActive = variant ? String(variant).toUpperCase() : "";
       if (normalizedActive) {
@@ -408,7 +422,7 @@ export default function SimpleRouteMap({
           snap = { ...snapped, variant: normalizedActive };
         }
       }
-      onMapClick({ click, snap });
+      onMapClick({ click, screen, snap });
     };
 
     map.on("click", handler);
@@ -416,6 +430,35 @@ export default function SimpleRouteMap({
       map.off("click", handler);
     };
   }, [onMapClick, variant]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const handler = (event: any) => {
+      if (!onMapContextMenu) return;
+      if (event?.preventDefault) {
+        event.preventDefault();
+      }
+      const click = { lat: event.lngLat.lat, lon: event.lngLat.lng };
+      const screen = event.point ? { x: event.point.x, y: event.point.y } : undefined;
+      let snap: MapClickPayload["snap"];
+      const normalizedActive = variant ? String(variant).toUpperCase() : "";
+      if (normalizedActive) {
+        const stats = routeStatsRef.current.get(normalizedActive);
+        const snapped = snapToRoute(stats ?? null, click);
+        if (snapped) {
+          snap = { ...snapped, variant: normalizedActive };
+        }
+      }
+      onMapContextMenu({ click, screen, snap });
+    };
+
+    map.on("contextmenu", handler);
+    return () => {
+      map.off("contextmenu", handler);
+    };
+  }, [onMapContextMenu, variant]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -669,12 +712,26 @@ export default function SimpleRouteMap({
     const map = mapRef.current;
     if (!map || !mapLoaded || !focusTarget) return;
     const zoom = focusTarget.zoom ?? Math.max(map.getZoom(), 13.5);
-    const focusKey = focusTarget.id ?? `${focusTarget.lat}:${focusTarget.lon}:${zoom}`;
+    const bearing = Number.isFinite(focusTarget.bearing) ? (focusTarget.bearing as number) : map.getBearing();
+    const pitch = Number.isFinite(focusTarget.pitch) ? (focusTarget.pitch as number) : map.getPitch();
+    const focusKey =
+      focusTarget.id ?? `${focusTarget.lat}:${focusTarget.lon}:${zoom}:${bearing}:${pitch}:${focusTarget.immediate ? "1" : "0"}`;
     if (lastFocusRef.current === focusKey) return;
     lastFocusRef.current = focusKey;
+    if (focusTarget.immediate) {
+      map.jumpTo({
+        center: [focusTarget.lon, focusTarget.lat],
+        zoom,
+        bearing,
+        pitch,
+      });
+      return;
+    }
     map.easeTo({
       center: [focusTarget.lon, focusTarget.lat],
       zoom,
+      bearing,
+      pitch,
       duration: 650,
       essential: true,
     });
@@ -736,9 +793,11 @@ export default function SimpleRouteMap({
           });
           element.addEventListener("mouseenter", () => {
             setHoveredPoiId(poi.id);
+            onPoiHoverRef.current?.(poi.id);
           });
           element.addEventListener("mouseleave", () => {
             setHoveredPoiId((prev) => (prev === poi.id ? null : prev));
+            onPoiHoverRef.current?.(null);
           });
 
           const marker = new maplibregl.Marker({ element, draggable: isDraggable })
@@ -827,9 +886,11 @@ export default function SimpleRouteMap({
           });
           element.addEventListener("mouseenter", () => {
             setHoveredPoiId(poi.id);
+            onPoiHoverRef.current?.(poi.id);
           });
           element.addEventListener("mouseleave", () => {
             setHoveredPoiId((prev) => (prev === poi.id ? null : prev));
+            onPoiHoverRef.current?.(null);
           });
 
           const marker = new maplibregl.Marker({ element, draggable: isDraggable })

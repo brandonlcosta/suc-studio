@@ -38,6 +38,7 @@ import useRouteContext from "../hooks/useRouteContext";
 import RouteMapPreview from "../components/route-context/RouteMapPreview";
 import RouteElevationPreview from "../components/route-context/RouteElevationPreview";
 import { buildSectionRangeFromPois } from "../components/route-context/routeContextUtils";
+import { buildRouteOverlayModel } from "../../../../suc-shared-data/src/route-overlay-primitives.js";
 
 type ViewMode = "builder" | "preview" | "library";
 
@@ -488,6 +489,14 @@ export default function WorkoutBuilder() {
       .filter((poi) => poi.type === "workout" && Number.isFinite(poi.routePointIndex))
       .sort((a, b) => (a.routePointIndex ?? 0) - (b.routePointIndex ?? 0));
   }, [routeContext.pois]);
+
+  const overlayModel = useMemo(
+    () =>
+      buildRouteOverlayModel(routeContext.track, workoutRoutePois, {
+        routeId: activeWorkout?.routeId || "",
+      }),
+    [routeContext.track, workoutRoutePois, activeWorkout?.routeId]
+  );
 
   const workoutSectionKeys = useMemo(
     () => buildWorkoutSectionKeys(workoutRoutePois.length),
@@ -1581,13 +1590,11 @@ export default function WorkoutBuilder() {
                       }}
                     >
                       <RouteMapPreview
-                        track={routeContext.track}
-                        pois={workoutRoutePois}
+                        overlay={overlayModel}
                         highlightedRange={highlightedRange}
                       />
                       <RouteElevationPreview
-                        track={routeContext.track}
-                        poiMarkers={workoutRoutePois}
+                        overlay={overlayModel}
                         highlightedRange={highlightedRange}
                       />
                     </div>

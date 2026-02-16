@@ -13,6 +13,7 @@ import challengesRouter from "./api/challenges.js";
 import seasonBuilderRouter from "./api/seasonBuilder.js";
 import trainingContentRouter from "./api/trainingContent.js";
 import routeIntelRouter from "./api/routeIntel.js";
+import routeMediaRouter from "./api/routeMedia.js";
 import routeIntelPreviewRouter from "./api/routeIntelPreview.js";
 import footwearReviewsRouter from "./api/footwearReviews.js";
 import gearReviewsRouter from "./api/gearReviews.js";
@@ -58,6 +59,7 @@ app.use("/api/challenges", challengesRouter);
 app.use("/api/season", seasonBuilderRouter);
 app.use("/api/training-content", trainingContentRouter);
 app.use("/api/route-intel", routeIntelRouter);
+app.use("/api/route-media", routeMediaRouter);
 app.use("/api/internal/route-intel", routeIntelPreviewRouter);
 app.use("/api/footwear-reviews", footwearReviewsRouter);
 app.use("/api/gear-reviews", gearReviewsRouter);
@@ -85,6 +87,7 @@ app.get("/api/health", (_req, res) => {
       "/api/season",
       "/api/training-content",
       "/api/route-intel",
+      "/api/route-media",
       "/api/footwear-reviews",
       "/api/gear-reviews",
       "/api/race-recaps",

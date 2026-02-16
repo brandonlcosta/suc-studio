@@ -1,23 +1,24 @@
 import { useMemo } from "react";
-import type { HighlightRange, RoutePoiMarker, TrackPoint } from "./routeContextTypes";
+import type { RouteOverlayModel } from "../../../../../suc-shared-data/src/route-overlay-primitives";
+import type { HighlightRange } from "./routeContextTypes";
 import { normalizeHighlightRange, projectTrack } from "./routeContextUtils";
 import { getPoiIconMarkup } from "./poiIcons";
 
 interface RouteMapPreviewProps {
-  track: TrackPoint[];
-  pois: RoutePoiMarker[];
+  overlay: RouteOverlayModel;
   highlightedRange: HighlightRange | null;
   height?: number;
   sectionAnchorPoiIds?: string[];
 }
 
 export default function RouteMapPreview({
-  track,
-  pois,
+  overlay,
   highlightedRange,
   height = 160,
   sectionAnchorPoiIds = [],
 }: RouteMapPreviewProps) {
+  const track = overlay.track || [];
+  const pois = overlay.pois || [];
   const { points, coords } = useMemo(() => projectTrack(track), [track]);
   const normalizedRange = useMemo(
     () => normalizeHighlightRange(highlightedRange, track.length),
