@@ -17,6 +17,8 @@ type InspectorPanelProps = {
   selectedWeek: WeekInstance | null;
   selectedWeekIndex: number | null;
   selectedWeekStartDate: Date | null;
+  selectedSUCWeekId: string | null;
+  selectedSUCWeekRange: string | null;
   selectedDayKey: DayKey | null;
   workoutOptions: Array<{ workoutId: string; name: string }>;
   eventOptions: EventSummary[];
@@ -63,6 +65,8 @@ export default function InspectorPanel({
   selectedWeek,
   selectedWeekIndex,
   selectedWeekStartDate,
+  selectedSUCWeekId,
+  selectedSUCWeekRange,
   selectedDayKey,
   workoutOptions,
   eventOptions,
@@ -140,12 +144,16 @@ export default function InspectorPanel({
           <div style={sectionTitleStyle}>Week</div>
           <div style={{ display: "grid", gap: "0.35rem", fontSize: "0.85rem" }}>
             <div>
+              <span style={labelStyle}>SUC Week</span>
+              {selectedSUCWeekId ?? "-"}
+            </div>
+            <div>
               <span style={labelStyle}>Index</span>
               {selectedWeekIndex !== null ? `Week ${selectedWeekIndex + 1}` : "-"}
             </div>
             <div>
               <span style={labelStyle}>Dates</span>
-              {weekDateRange}
+              {selectedSUCWeekRange || weekDateRange}
             </div>
             <div>
               <span style={labelStyle}>Focus</span>
@@ -217,7 +225,7 @@ export default function InspectorPanel({
                           }}
                         />
                         <span>
-                          {event.eventName} {event.eventDate ? `· ${event.eventDate}` : ""}
+                          {event.eventName} {event.eventDate ? `- ${event.eventDate}` : ""}
                         </span>
                       </label>
                     );

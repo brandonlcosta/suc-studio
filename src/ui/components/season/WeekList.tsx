@@ -2,13 +2,7 @@ import type { DayKey, Season, WeekInstance } from "../../../season";
 import type { WeekPreset } from "./presets";
 import WeekCard from "./WeekCard";
 import type { EventSummary } from "../../hooks/useEvents";
-
-type WeekWithIndex = {
-  blockId: string;
-  week: WeekInstance;
-  globalWeekIndex: number;
-  weekStartDate: Date;
-};
+import type { WeekWithIndex } from "./weekTypes";
 
 type WeekListProps = {
   weeksWithIndex: WeekWithIndex[];

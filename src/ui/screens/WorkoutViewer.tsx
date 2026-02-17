@@ -4,6 +4,8 @@ import { effortBlocks } from "./WorkoutBuilder/effortBlocks";
 import type { TierLabel, WorkoutBlockInstance, WorkoutBuilderWorkout } from "./WorkoutBuilder/builderTypes";
 import type { IntervalSegment, IntervalTarget, TierVariant, Workout } from "../types";
 import { calendarByDate, DEFAULT_TIME_ZONE, type CalendarDay } from "../utils/calendarSelectors";
+import { useStudioWeek } from "../context/StudioWeekContext";
+import { getSUCWeekBounds } from "../utils/sucWeek";
 
 type ViewerTier = "MED" | "LRG" | "XL";
 
@@ -250,6 +252,7 @@ function formatTargetDetail(target?: IntervalTarget | null): string {
 }
 
 export default function WorkoutViewer() {
+  const { selectedWeekId } = useStudioWeek();
   const [now, setNow] = useState(() => new Date());
   const [activeTab, setActiveTab] = useState<"today" | "upcoming">("today");
   const [selectedTier, setSelectedTier] = useState<ViewerTier>("MED");
@@ -281,6 +284,22 @@ export default function WorkoutViewer() {
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
+
+  useEffect(() => {
+    const bounds = getSUCWeekBounds(selectedWeekId);
+    if (!bounds) return;
+    const mondayLocalNoon = new Date(
+      bounds.monday.getUTCFullYear(),
+      bounds.monday.getUTCMonth(),
+      bounds.monday.getUTCDate(),
+      12,
+      0,
+      0,
+      0
+    );
+    setPinnedDate(mondayLocalNoon);
+    setActiveTab("today");
+  }, [selectedWeekId]);
 
   const hasCalendarData = Object.keys(calendarByDate).length > 0;
 
@@ -416,9 +435,9 @@ export default function WorkoutViewer() {
                 </div>
                 <div style={{ ...mutedText, marginTop: "8px" }}>
                   {resolvedResult
-                    ? `Week ${resolvedResult.week.index + 1} - ${resolvedResult.block.name}`
+                    ? `${selectedWeekId || `Week ${resolvedResult.week.index + 1}`} - ${resolvedResult.block.name}`
                     : weekContext
-                      ? `Week ${weekContext.index + 1} - ${weekContext.block?.name ?? "Block"}`
+                      ? `${selectedWeekId || `Week ${weekContext.index + 1}`} - ${weekContext.block?.name ?? "Block"}`
                       : ""}
                 </div>
                 <div style={{ ...mutedText, marginTop: "4px" }}>

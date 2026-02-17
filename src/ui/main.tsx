@@ -11,6 +11,8 @@ import ChallengeBuilder from "./screens/ChallengeBuilder";
 import TipsManager from "./screens/TipsManager";
 import RouteIntelBuilder from "./screens/RouteIntelBuilder/RouteIntelBuilder";
 import RouteMediaBuilder from "./screens/RouteMediaBuilder/RouteMediaBuilder";
+import { StudioWeekProvider } from "./context/StudioWeekContext";
+import GlobalWeekSelector from "./components/week/GlobalWeekSelector";
 
 // Desktop screens
 import DraftInbox from "./screens/DraftInbox";
@@ -70,45 +72,49 @@ function StudioNav() {
     <nav
       style={{
         display: "flex",
-        gap: "0.5rem",
+        gap: "0.75rem",
         padding: "0.75rem 1rem",
         borderBottom: "1px solid #2a2a2a",
         background: "#0f1115",
+        alignItems: "center",
       }}
     >
-      <NavLink to="/" style={linkStyle}>
-        Home
-      </NavLink>
-      <NavLink to="/studio/workouts" style={linkStyle}>
-        Workouts
-      </NavLink>
-      <NavLink to="/studio/routes" style={linkStyle}>
-        Routes
-      </NavLink>
-      <NavLink to="/studio/events" style={linkStyle}>
-        Events
-      </NavLink>
-      <NavLink to="/studio/seasons" style={linkStyle}>
-        Blocks
-      </NavLink>
-      <NavLink to="/studio/roster" style={linkStyle}>
-        Roster
-      </NavLink>
-      <NavLink to="/studio/challenges" style={linkStyle}>
-        Challenges
-      </NavLink>
-      <NavLink to="/studio/route-intel" style={linkStyle}>
-        Route Intel
-      </NavLink>
-      <NavLink to="/route-media" style={linkStyle}>
-        Cinematic
-      </NavLink>
-      <NavLink to="/tips" style={linkStyle}>
-        Tips
-      </NavLink>
-      <NavLink to="/drafts" style={linkStyle}>
-        Drafts
-      </NavLink>
+      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+        <NavLink to="/" style={linkStyle}>
+          Home
+        </NavLink>
+        <NavLink to="/studio/workouts" style={linkStyle}>
+          Workouts
+        </NavLink>
+        <NavLink to="/studio/routes" style={linkStyle}>
+          Routes
+        </NavLink>
+        <NavLink to="/studio/events" style={linkStyle}>
+          Events
+        </NavLink>
+        <NavLink to="/studio/seasons" style={linkStyle}>
+          Blocks
+        </NavLink>
+        <NavLink to="/studio/roster" style={linkStyle}>
+          Roster
+        </NavLink>
+        <NavLink to="/studio/challenges" style={linkStyle}>
+          Challenges
+        </NavLink>
+        <NavLink to="/studio/route-intel" style={linkStyle}>
+          Route Intel
+        </NavLink>
+        <NavLink to="/route-media" style={linkStyle}>
+          Cinematic
+        </NavLink>
+        <NavLink to="/tips" style={linkStyle}>
+          Tips
+        </NavLink>
+        <NavLink to="/drafts" style={linkStyle}>
+          Drafts
+        </NavLink>
+      </div>
+      <GlobalWeekSelector />
     </nav>
   );
 }
@@ -116,9 +122,11 @@ function StudioNav() {
 // Render app
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <AppShell />
-    </BrowserRouter>
+    <StudioWeekProvider>
+      <BrowserRouter>
+        <AppShell />
+      </BrowserRouter>
+    </StudioWeekProvider>
   </React.StrictMode>
 );
 

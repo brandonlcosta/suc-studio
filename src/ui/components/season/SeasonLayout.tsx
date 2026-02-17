@@ -20,19 +20,16 @@ import SeasonHeader from "./SeasonHeader";
 import SeasonMarkers from "./SeasonMarkers";
 import InspectorPanel from "./InspectorPanel";
 import SeasonTimelineStrip from "./SeasonTimelineStrip";
+import SeasonWeekRail from "./SeasonWeekRail";
 import SeasonWarnings from "./SeasonWarnings";
 import BlockPresetLibrary from "./BlockPresetLibrary";
 import SeasonIntensityChart from "./SeasonIntensityChart";
 import { BLOCK_TEMPLATES, WEEK_PRESETS, buildBlockTemplate, type BlockTemplate, type WeekPreset } from "./presets";
+import { formatSUCWeekLabel, formatSUCWeekRange, getSUCWeekBounds, getSUCWeekId } from "../../utils/sucWeek";
+import { useStudioWeek } from "../../context/StudioWeekContext";
+import type { WeekWithIndex } from "./weekTypes";
 
 type ActionKey = "load" | "createDraft" | "publish" | "mutate" | "addMarker" | "moveMarker" | "removeMarker";
-
-type WeekWithIndex = {
-  blockId: string;
-  week: WeekInstance;
-  globalWeekIndex: number;
-  weekStartDate: Date;
-};
 
 type BlockDragIntent = {
   template: BlockTemplate;
@@ -73,6 +70,20 @@ function addDays(date: Date, days: number): Date {
   return next;
 }
 
+function toIsoDate(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function toLocalIsoDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function parseIsoLocalDate(value?: string | null): Date | null {
   if (!value) return null;
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -85,6 +96,16 @@ function parseIsoLocalDate(value?: string | null): Date | null {
   if (parsed.getFullYear() !== year || parsed.getMonth() !== monthIndex || parsed.getDate() !== day) {
     return null;
   }
+  return parsed;
+}
+
+function parseEventDate(value?: string): Date | null {
+  if (!value) return null;
+  const iso = parseIsoLocalDate(value);
+  if (iso) return iso;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  parsed.setHours(0, 0, 0, 0);
   return parsed;
 }
 
@@ -114,6 +135,8 @@ export default function SeasonLayout() {
   const [calendarCursorIndex, setCalendarCursorIndex] = useState<number | null>(null);
   const blockRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [workoutOptions, setWorkoutOptions] = useState<Array<{ workoutId: string; name: string }>>([]);
+  const { selectedWeekId: selectedSUCWeekId, setSelectedWeekId: setSelectedSUCWeekId, registerWeekOptions } =
+    useStudioWeek();
   const { events: eventOptions, isLoading: isLoadingEvents } = useEvents();
   const eventLookup = useMemo(() => {
     return eventOptions.reduce<Record<string, (typeof eventOptions)[number]>>((acc, event) => {
@@ -215,17 +238,48 @@ export default function SeasonLayout() {
     let index = 0;
     season.blocks.forEach((block) => {
       block.weeks.forEach((week) => {
+        const weekStartDate = weekStartDateForIndex(index);
+        const fallbackSUCWeekId = `${weekStartDate.getFullYear()}-WK-${String(index + 1).padStart(2, "0")}`;
+        const sucWeekId = getSUCWeekId(weekStartDate) ?? fallbackSUCWeekId;
+        const computedBounds = getSUCWeekBounds(sucWeekId) ?? {
+          monday: weekStartDate,
+          sunday: addDays(weekStartDate, 6),
+        };
+        const weekBoundsIso = {
+          monday: toIsoDate(computedBounds.monday),
+          sunday: toIsoDate(computedBounds.sunday),
+        };
+        const weekRangeLabel = formatSUCWeekRange(sucWeekId) ?? `${weekBoundsIso.monday}-${weekBoundsIso.sunday}`;
+        const weekLabel = formatSUCWeekLabel(sucWeekId) ?? `${sucWeekId} - ${weekRangeLabel}`;
+        const linkedEventNames = (week.eventIds ?? [])
+          .map((eventId) => eventLookup[eventId]?.eventName || eventId)
+          .filter(Boolean);
+        const datedEventNames = eventOptions
+          .filter((event) => {
+            const parsedDate = parseEventDate(event.eventDate);
+            if (!parsedDate) return false;
+            const dateKey = toLocalIsoDate(parsedDate);
+            return dateKey >= weekBoundsIso.monday && dateKey <= weekBoundsIso.sunday;
+          })
+          .map((event) => event.eventName);
+        const eventBadgeNames = Array.from(new Set([...linkedEventNames, ...datedEventNames])).slice(0, 4);
         flattened.push({
           blockId: block.blockId,
           week,
           globalWeekIndex: index,
-          weekStartDate: weekStartDateForIndex(index),
+          weekStartDate,
+          sucWeekId,
+          weekLabel,
+          weekRangeLabel,
+          weekBounds: computedBounds,
+          weekBoundsIso,
+          eventBadgeNames,
         });
         index += 1;
       });
     });
     return flattened;
-  }, [season, weekStartDateForIndex]);
+  }, [eventLookup, eventOptions, season, weekStartDateForIndex]);
 
   const markersByWeek = useMemo(() => {
     const map = new Map<number, Season["seasonMarkers"]>();
@@ -235,6 +289,14 @@ export default function SeasonLayout() {
       map.set(marker.weekIndex, [...current, marker]);
     });
     return map;
+  }, [season]);
+
+  const blockNameById = useMemo(() => {
+    if (!season) return {} as Record<string, string>;
+    return season.blocks.reduce<Record<string, string>>((acc, block) => {
+      acc[block.blockId] = block.name;
+      return acc;
+    }, {});
   }, [season]);
 
   const selectedBlock = useMemo(() => {
@@ -251,16 +313,18 @@ export default function SeasonLayout() {
     return null;
   }, [season, selectedWeekId]);
 
-  const selectedWeekIndex = useMemo(() => {
+  const selectedWeekEntry = useMemo(() => {
     if (!selectedWeekId) return null;
-    const match = allWeeks.find((entry) => entry.week.weekId === selectedWeekId);
-    return match ? match.globalWeekIndex : null;
+    return allWeeks.find((entry) => entry.week.weekId === selectedWeekId) ?? null;
   }, [allWeeks, selectedWeekId]);
 
+  const selectedWeekIndex = useMemo(() => {
+    return selectedWeekEntry ? selectedWeekEntry.globalWeekIndex : null;
+  }, [selectedWeekEntry]);
+
   const selectedWeekStartDate = useMemo(() => {
-    if (selectedWeekIndex === null) return null;
-    return weekStartDateForIndex(selectedWeekIndex);
-  }, [selectedWeekIndex, weekStartDateForIndex]);
+    return selectedWeekEntry?.weekStartDate ?? null;
+  }, [selectedWeekEntry]);
 
   const workoutLabels = useMemo(() => {
     const map: Record<string, string> = {};
@@ -509,13 +573,23 @@ export default function SeasonLayout() {
     setSelectedBlockId(blockId);
     setSelectedWeekId(weekId);
     setSelectedDayKey(null);
-  }, []);
+    const match = allWeeks.find((entry) => entry.week.weekId === weekId);
+    if (match) {
+      setCalendarCursorIndex(match.globalWeekIndex);
+      setSelectedSUCWeekId(match.sucWeekId);
+    }
+  }, [allWeeks, setSelectedSUCWeekId]);
 
   const handleSelectDay = useCallback((blockId: string, weekId: string, dayKey: DayKey) => {
     setSelectedBlockId(blockId);
     setSelectedWeekId(weekId);
     setSelectedDayKey(dayKey);
-  }, []);
+    const match = allWeeks.find((entry) => entry.week.weekId === weekId);
+    if (match) {
+      setCalendarCursorIndex(match.globalWeekIndex);
+      setSelectedSUCWeekId(match.sucWeekId);
+    }
+  }, [allWeeks, setSelectedSUCWeekId]);
 
   const handleUpdateDay = useCallback(
     async (dayKey: DayKey, patch: Partial<DayAssignment>) => {
@@ -672,6 +746,43 @@ export default function SeasonLayout() {
     [handleApplyWeekPreset, weekDragIntent]
   );
 
+  const weekPresetTargetSUCWeekId = useMemo(() => {
+    if (!weekDragIntent?.targetWeekId) return null;
+    const match = allWeeks.find((entry) => entry.week.weekId === weekDragIntent.targetWeekId);
+    return match?.sucWeekId ?? null;
+  }, [allWeeks, weekDragIntent?.targetWeekId]);
+
+  const handleSelectSUCWeek = useCallback(
+    (sucWeekId: string) => {
+      const target = allWeeks.find((entry) => entry.sucWeekId === sucWeekId);
+      if (!target) return;
+      setSelectedBlockId(target.blockId);
+      setSelectedWeekId(target.week.weekId);
+      setSelectedDayKey(null);
+      setCalendarCursorIndex(target.globalWeekIndex);
+      setSelectedSUCWeekId(target.sucWeekId);
+    },
+    [allWeeks, setSelectedSUCWeekId]
+  );
+
+  const handleWeekPresetDragOverSUCWeek = useCallback(
+    (sucWeekId: string) => {
+      const target = allWeeks.find((entry) => entry.sucWeekId === sucWeekId);
+      if (!target) return;
+      handleWeekPresetDragOver(target.week.weekId);
+    },
+    [allWeeks, handleWeekPresetDragOver]
+  );
+
+  const handleWeekPresetDropSUCWeek = useCallback(
+    (sucWeekId: string) => {
+      const target = allWeeks.find((entry) => entry.sucWeekId === sucWeekId);
+      if (!target) return;
+      void handleWeekPresetDrop(target.week.weekId);
+    },
+    [allWeeks, handleWeekPresetDrop]
+  );
+
   const getPresetLabelForWeek = useCallback(
     (week: WeekInstance) => {
       const match = WEEK_PRESETS.find((preset) => isWeekMatchingPreset(week, preset));
@@ -681,6 +792,40 @@ export default function SeasonLayout() {
   );
 
   const isBusy = Object.values(loading).some(Boolean);
+
+  useEffect(() => {
+    if (!allWeeks.length) return;
+    registerWeekOptions(
+      allWeeks.map((entry) => ({
+        weekId: entry.sucWeekId,
+        label: `${entry.sucWeekId} - ${entry.weekRangeLabel}`,
+        rangeLabel: entry.weekRangeLabel,
+        blockId: entry.blockId,
+        weekOrdinal: entry.globalWeekIndex + 1,
+      }))
+    );
+  }, [allWeeks, registerWeekOptions]);
+
+  useEffect(() => {
+    if (!selectedSUCWeekId || !allWeeks.length) return;
+    const match = allWeeks.find((entry) => entry.sucWeekId === selectedSUCWeekId);
+    if (!match) return;
+    if (selectedWeekId !== match.week.weekId) {
+      setSelectedBlockId(match.blockId);
+      setSelectedWeekId(match.week.weekId);
+      setSelectedDayKey(null);
+    }
+    if (calendarCursorIndex !== match.globalWeekIndex) {
+      setCalendarCursorIndex(match.globalWeekIndex);
+    }
+  }, [allWeeks, calendarCursorIndex, selectedSUCWeekId, selectedWeekId]);
+
+  useEffect(() => {
+    if (!selectedWeekEntry) return;
+    if (selectedWeekEntry.sucWeekId !== selectedSUCWeekId) {
+      setSelectedSUCWeekId(selectedWeekEntry.sucWeekId);
+    }
+  }, [selectedSUCWeekId, selectedWeekEntry, setSelectedSUCWeekId]);
 
   useEffect(() => {
     if (!season) return;
@@ -706,8 +851,15 @@ export default function SeasonLayout() {
       const delta = direction === "past" ? -4 : 4;
       const nextIndex = Math.max(0, Math.min(totalWeeks - 1, currentIndex + delta));
       setCalendarCursorIndex(nextIndex);
+      const target = allWeeks[nextIndex];
+      if (target) {
+        setSelectedBlockId(target.blockId);
+        setSelectedWeekId(target.week.weekId);
+        setSelectedDayKey(null);
+        setSelectedSUCWeekId(target.sucWeekId);
+      }
     },
-    [allWeeks.length, calendarCursorIndex, season]
+    [allWeeks, calendarCursorIndex, season, setSelectedSUCWeekId]
   );
 
   return (
@@ -779,25 +931,38 @@ export default function SeasonLayout() {
           />
           <div style={{ display: "grid", gap: "1rem" }}>
             <SeasonIntensityChart blocks={season.blocks} />
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
-              <SeasonTimelineStrip
-                blocks={season.blocks}
-                selectedBlockId={selectedBlockId}
-                onSelectBlock={handleSelectBlock}
-                onScrollToBlock={handleScrollToBlock}
-                dragTemplate={blockDragIntent?.template ?? null}
-                dragTargetBlockId={blockDragIntent?.targetBlockId ?? null}
-                onDragOverBlock={handleBlockTemplateDragOver}
-                onDropTemplate={handleBlockTemplateDrop}
-              />
-              <label style={{ display: "flex", gap: "0.5rem", alignItems: "center", fontSize: "0.85rem" }}>
-                <input
-                  type="checkbox"
-                  checked={quickEditWeeks}
-                  onChange={(event) => setQuickEditWeeks(event.target.checked)}
+            <div style={{ display: "grid", gap: "0.75rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
+                <SeasonTimelineStrip
+                  blocks={season.blocks}
+                  selectedBlockId={selectedBlockId}
+                  onSelectBlock={handleSelectBlock}
+                  onScrollToBlock={handleScrollToBlock}
+                  dragTemplate={blockDragIntent?.template ?? null}
+                  dragTargetBlockId={blockDragIntent?.targetBlockId ?? null}
+                  onDragOverBlock={handleBlockTemplateDragOver}
+                  onDropTemplate={handleBlockTemplateDrop}
                 />
-                Quick Edit Weeks
-              </label>
+                <label style={{ display: "flex", gap: "0.5rem", alignItems: "center", fontSize: "0.85rem" }}>
+                  <input
+                    type="checkbox"
+                    checked={quickEditWeeks}
+                    onChange={(event) => setQuickEditWeeks(event.target.checked)}
+                  />
+                  Quick Edit Weeks
+                </label>
+              </div>
+              <SeasonWeekRail
+                weeks={allWeeks}
+                blockNameById={blockNameById}
+                selectedSUCWeekId={selectedWeekEntry?.sucWeekId ?? selectedSUCWeekId}
+                isWeekPresetDragActive={!!weekDragIntent}
+                weekPresetDrag={weekDragIntent?.preset ?? null}
+                weekPresetTargetSUCWeekId={weekPresetTargetSUCWeekId}
+                onSelectWeek={handleSelectSUCWeek}
+                onDragOverWeek={handleWeekPresetDragOverSUCWeek}
+                onDropWeek={handleWeekPresetDropSUCWeek}
+              />
             </div>
             <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
               <button
@@ -812,7 +977,7 @@ export default function SeasonLayout() {
                   fontSize: "0.75rem",
                 }}
               >
-                ? Past Weeks
+                {"<"} Past Weeks
               </button>
               <button
                 onClick={() => handleCalendarShift("future")}
@@ -826,7 +991,7 @@ export default function SeasonLayout() {
                   fontSize: "0.75rem",
                 }}
               >
-                Future Weeks ?
+                Future Weeks {">"}
               </button>
             </div>
             <SeasonMarkers
@@ -919,6 +1084,8 @@ export default function SeasonLayout() {
             selectedWeek={selectedWeek}
             selectedWeekIndex={selectedWeekIndex}
             selectedWeekStartDate={selectedWeekStartDate}
+            selectedSUCWeekId={selectedWeekEntry?.sucWeekId ?? selectedSUCWeekId}
+            selectedSUCWeekRange={selectedWeekEntry?.weekRangeLabel ?? null}
             selectedDayKey={selectedDayKey}
             workoutOptions={workoutOptions}
             eventOptions={eventOptions}
